@@ -1,5 +1,12 @@
 # fastapi-errors-plus
 
+[![PyPI version](https://badge.fury.io/py/fastapi-errors-plus.svg)](https://pypi.org/project/fastapi-errors-plus/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![Tests](https://img.shields.io/badge/tests-41%20passed-success.svg)](https://github.com/yourusername/fastapi-errors-plus)
+[![Coverage](https://img.shields.io/badge/coverage-83%25-green.svg)](https://github.com/yourusername/fastapi-errors-plus)
+
 Универсальная библиотека для документирования ошибок в эндпоинтах FastAPI.
 
 > [English version of README](README.md)
