@@ -84,6 +84,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Documentation examples with correct Python syntax
 - Bug in example merging that causes data loss
 
-[Unreleased]: https://github.com/yourusername/fastapi-errors-plus/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/yourusername/fastapi-errors-plus/releases/tag/v0.1.0
+[Unreleased]: https://github.com/seligoroff/fastapi-errors-plus/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/seligoroff/fastapi-errors-plus/releases/tag/v0.1.0
 

@@ -4,8 +4,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-41%20passed-success.svg)](https://github.com/yourusername/fastapi-errors-plus)
-[![Coverage](https://img.shields.io/badge/coverage-83%25-green.svg)](https://github.com/yourusername/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-41%20passed-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Coverage](https://img.shields.io/badge/coverage-83%25-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Универсальная библиотека для документирования ошибок в эндпоинтах FastAPI.
 
@@ -30,7 +30,7 @@ pip install fastapi-errors-plus
 Или установка из исходников:
 
 ```bash
-git clone https://github.com/yourusername/fastapi-errors-plus.git
+git clone git@github.com:seligoroff/fastapi-errors-plus.git
 cd fastapi-errors-plus
 pip install -e .
 ```
