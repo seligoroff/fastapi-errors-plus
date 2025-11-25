@@ -1,5 +1,7 @@
 """Test FastAPI application for integration testing."""
 
+from typing import Dict, Any
+
 from fastapi import APIRouter, FastAPI, status
 from fastapi_errors_plus import BaseErrorDTO, Errors, StandardErrorDTO
 from tests.conftest import SimpleErrorDTO
@@ -9,6 +11,57 @@ app = FastAPI(title="Test API for fastapi-errors-plus")
 
 # Create router
 router = APIRouter()
+
+
+# Domain Exception pattern for testing (Best Practice example)
+class DomainException(Exception):
+    """Base exception implementing ErrorDTO protocol."""
+    status_code: int
+    message: str
+    
+    def to_example(self) -> Dict[str, Any]:
+        """Generate example for OpenAPI."""
+        return {
+            self.message: {
+                "value": {"detail": self.message},
+            },
+        }
+    
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls()
+
+
+class TestItemNotFoundError(DomainException):
+    """Test item not found error."""
+    status_code = status.HTTP_404_NOT_FOUND
+    message = "Test item not found"
+    
+    def __init__(self, item_id: str = ""):
+        self.item_id = item_id
+        super().__init__(self.message)
+    
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls(item_id="test_id")
+
+
+class TestItemAccessDeniedError(DomainException):
+    """Test item access denied error."""
+    status_code = status.HTTP_403_FORBIDDEN
+    message = "Test item access denied"
+    
+    def __init__(self, item_id: str = "", user_id: str = ""):
+        self.item_id = item_id
+        self.user_id = user_id
+        super().__init__(self.message)
+    
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls(item_id="test_id", user_id="test_user")
 
 
 # Example 1: Standard flags only
@@ -218,6 +271,71 @@ def delete_item_standard_error_dto(item_id: int):
 def create_item_mixed_base_dto(item_id: int):
     """Endpoint with mixed BaseErrorDTO, StandardErrorDTO, and flags."""
     return {"message": f"Item {item_id} created"}
+
+
+# Domain Exception pattern for testing (Best Practice example)
+class DomainException(Exception):
+    """Base exception implementing ErrorDTO protocol."""
+    status_code: int
+    message: str
+    
+    def to_example(self) -> Dict[str, Any]:
+        """Generate example for OpenAPI."""
+        return {
+            self.message: {
+                "value": {"detail": self.message},
+            },
+        }
+    
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls()
+
+
+class TestItemNotFoundError(DomainException):
+    """Test item not found error."""
+    status_code = status.HTTP_404_NOT_FOUND
+    message = "Test item not found"
+    
+    def __init__(self, item_id: str = ""):
+        self.item_id = item_id
+        super().__init__(self.message)
+    
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls(item_id="test_id")
+
+
+class TestItemAccessDeniedError(DomainException):
+    """Test item access denied error."""
+    status_code = status.HTTP_403_FORBIDDEN
+    message = "Test item access denied"
+    
+    def __init__(self, item_id: str = "", user_id: str = ""):
+        self.item_id = item_id
+        self.user_id = user_id
+        super().__init__(self.message)
+    
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls(item_id="test_id", user_id="test_user")
+
+
+# Example 11: Domain Exception as ErrorDTO (Best Practice pattern)
+@router.delete(
+    "/domain-exception/{item_id}",
+    responses=Errors(
+        TestItemNotFoundError.for_openapi(),      # Using for_openapi() pattern
+        TestItemAccessDeniedError.for_openapi(),  # Using for_openapi() pattern
+        unauthorized_401=True,                    # Standard flag
+    ),
+)
+def delete_item_domain_exception(item_id: str):
+    """Endpoint demonstrating Domain Exception as ErrorDTO pattern."""
+    return {"message": f"Item {item_id} deleted"}
 
 
 # Register router

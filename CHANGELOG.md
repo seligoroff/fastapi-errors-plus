@@ -11,6 +11,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.1] - 2025-01-XX
+
+### Added
+- **Tests for Domain Exception pattern**: Added comprehensive test suite for `for_openapi()` pattern
+  - 5 new integration tests verifying Domain Exception as ErrorDTO pattern works correctly
+  - Tests verify OpenAPI schema generation for Domain Exceptions
+  - Tests verify `for_openapi()` method returns correct ErrorDTO instances
+  - Tests verify integration with `Errors` class
+  - Test endpoint `/api/v1/domain-exception/{item_id}` demonstrating the pattern
+
+### Changed
+- **Test coverage**: Improved test coverage to 86.50% (from 83%)
+  - Added test classes `DomainException`, `TestItemNotFoundError`, `TestItemAccessDeniedError` in test suite
+  - All tests for Best Practice pattern now included
+
+### Migration Guide
+- **No breaking changes**: All changes are test additions
+- **For users**: The documented Best Practice pattern is now fully tested and verified
+
+---
+
 ## [0.6.0] - 2025-01-XX
 
 ### Added

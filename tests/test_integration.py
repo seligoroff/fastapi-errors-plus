@@ -319,6 +319,93 @@ class TestMixedBaseDTOEndpoint:
         assert "500" in responses  # From flag
 
 
+class TestDomainExceptionEndpoint:
+    """Tests for Domain Exception as ErrorDTO endpoint (Best Practice pattern)."""
+    
+    def test_responses_in_openapi(self):
+        """Test that Domain Exception responses are in OpenAPI."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/domain-exception/{item_id}"]["delete"]
+        responses = endpoint["responses"]
+        
+        assert "401" in responses  # From flag
+        assert "403" in responses  # From TestItemAccessDeniedError.for_openapi()
+        assert "404" in responses  # From TestItemNotFoundError.for_openapi()
+    
+    def test_404_response_structure_from_domain_exception(self):
+        """Test 404 response structure from Domain Exception."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/domain-exception/{item_id}"]["delete"]
+        error_404 = endpoint["responses"]["404"]
+        
+        assert error_404["description"] == "Test item not found"
+        assert "content" in error_404
+        assert "application/json" in error_404["content"]
+        assert "examples" in error_404["content"]["application/json"]
+        examples = error_404["content"]["application/json"]["examples"]
+        assert "Test item not found" in examples
+    
+    def test_403_response_structure_from_domain_exception(self):
+        """Test 403 response structure from Domain Exception."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/domain-exception/{item_id}"]["delete"]
+        error_403 = endpoint["responses"]["403"]
+        
+        assert error_403["description"] == "Test item access denied"
+        assert "content" in error_403
+        assert "application/json" in error_403["content"]
+        assert "examples" in error_403["content"]["application/json"]
+        examples = error_403["content"]["application/json"]["examples"]
+        assert "Test item access denied" in examples
+    
+    def test_for_openapi_method_returns_error_dto(self):
+        """Test that for_openapi() method returns instance implementing ErrorDTO."""
+        from tests.test_app import TestItemNotFoundError
+        
+        error_instance = TestItemNotFoundError.for_openapi()
+        
+        # Check that it implements ErrorDTO protocol
+        assert hasattr(error_instance, "status_code")
+        assert hasattr(error_instance, "message")
+        assert hasattr(error_instance, "to_example")
+        assert callable(error_instance.to_example)
+        
+        # Check values
+        assert error_instance.status_code == 404
+        assert error_instance.message == "Test item not found"
+        assert error_instance.item_id == "test_id"
+        
+        # Check to_example() works
+        example = error_instance.to_example()
+        assert isinstance(example, dict)
+        assert "Test item not found" in example
+    
+    def test_domain_exception_works_with_errors_class(self):
+        """Test that Domain Exception instances work with Errors class."""
+        from fastapi_errors_plus import Errors
+        from tests.test_app import TestItemNotFoundError, TestItemAccessDeniedError
+        
+        errors = Errors(
+            TestItemNotFoundError.for_openapi(),
+            TestItemAccessDeniedError.for_openapi(),
+        )
+        responses = errors
+        
+        assert 404 in responses
+        assert 403 in responses
+        assert responses[404]["description"] == "Test item not found"
+        assert responses[403]["description"] == "Test item access denied"
+
+
 class TestRealEndpoints:
     """Tests for actual endpoint responses."""
     
@@ -358,6 +445,14 @@ class TestRealEndpoints:
         """Test that StandardErrorDTO endpoint returns 200."""
         client = TestClient(app)
         response = client.delete("/api/v1/standard-error-dto/1")
+        
+        assert response.status_code == 200
+        assert response.json() == {"message": "Item 1 deleted"}
+    
+    def test_domain_exception_endpoint_works(self):
+        """Test that Domain Exception endpoint returns 200."""
+        client = TestClient(app)
+        response = client.delete("/api/v1/domain-exception/1")
         
         assert response.status_code == 200
         assert response.json() == {"message": "Item 1 deleted"}
