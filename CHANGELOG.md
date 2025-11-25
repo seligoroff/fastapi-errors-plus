@@ -11,6 +11,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2025-01-XX
+
+### Fixed
+- **Type annotations**: Fixed `validation_error` and `validation_error_422` type annotations from `bool = None` to `Optional[bool] = None`
+  - Resolves type checker errors (MyPy, Pyright)
+  - Documentation now correctly reflects the actual type signature
+- **Documentation examples**: Fixed incorrect argument order in docstring example (positional arguments must come before keyword arguments)
+- **README accuracy**: Removed outdated "Callable object" mention, replaced with correct "Mapping object" description
+- **Example key collisions**: Fixed potential data loss when merging examples with same keys
+  - Added `_unique_key()` method to generate unique keys for examples
+  - Prevents overwriting existing examples during merges
+- **DTO description priority**: Fixed DTO not overriding standard flag descriptions
+  - DTO descriptions now correctly override standard flag descriptions
+  - Maintains priority: dict > DTO > standard flags
+
+### Added
+- **PEP 561 support**: Added `py.typed` marker file for type checker support
+  - MyPy, Pyright, and Pylance now recognize type annotations
+  - Improves IDE autocomplete and type checking in user projects
+- **Unique key generation**: Added `_unique_key()` method to prevent example key collisions
+- **Standard descriptions mapping**: Added `STANDARD_DESCRIPTIONS` for priority checking
+
+### Changed
+- Improved type safety with `Optional[bool]` for validation_error parameters
+- Enhanced documentation accuracy and consistency
+
+### Migration Guide
+- **No breaking changes**: All fixes are backward compatible
+- **Type checkers**: If you use MyPy or Pyright, you may see fewer type errors after updating
+- **Documentation**: Examples in documentation now follow correct Python syntax
+
+---
+
 ## [0.4.0] - 2025-01-XX
 
 ### Changed

@@ -349,11 +349,11 @@ Errors(
     *errors: Union[Dict[int, Dict[str, Any]], ErrorDTO],
     unauthorized: bool = False,
     forbidden: bool = False,
-    validation_error: bool = True,  # По умолчанию True (FastAPI валидирует все параметры)
+    validation_error: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
     internal_server_error: bool = False,
     unauthorized_401: bool = False,
     forbidden_403: bool = False,
-    validation_error_422: bool = True,  # По умолчанию True (FastAPI валидирует все параметры)
+    validation_error_422: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
     internal_server_error_500: bool = False,
 )
 ```
@@ -362,18 +362,25 @@ Errors(
 - `*errors`: Произвольные ошибки как dict или объекты ErrorDTO
 - `unauthorized_401`: Добавить ошибку 401 Unauthorized (рекомендуется, явно). По умолчанию `False`.
 - `forbidden_403`: Добавить ошибку 403 Forbidden (рекомендуется, явно). По умолчанию `False`.
-- `validation_error_422`: Добавить ошибку 422 Unprocessable Entity (рекомендуется, явно). По умолчанию `True` (FastAPI валидирует все параметры).
+- `validation_error_422`: Добавить ошибку 422 Unprocessable Entity (рекомендуется, явно). 
+  - `None` (по умолчанию): Добавить 422 (True по умолчанию, FastAPI валидирует все параметры)
+  - `False`: Явно отключить 422
+  - `True`: Явно включить 422
 - `internal_server_error_500`: Добавить ошибку 500 Internal Server Error (рекомендуется, явно). По умолчанию `False`.
 - `unauthorized`: Добавить ошибку 401 Unauthorized (устаревший, для обратной совместимости). По умолчанию `False`.
 - `forbidden`: Добавить ошибку 403 Forbidden (устаревший, для обратной совместимости). По умолчанию `False`.
-- `validation_error`: Добавить ошибку 422 Unprocessable Entity (устаревший, для обратной совместимости). По умолчанию `True` (FastAPI валидирует все параметры).
+- `validation_error`: Добавить ошибку 422 Unprocessable Entity (устаревший, для обратной совместимости). 
+  - `None` (по умолчанию): Добавить 422 (True по умолчанию, FastAPI валидирует все параметры)
+  - `False`: Явно отключить 422
+  - `True`: Явно включить 422
 - `internal_server_error`: Добавить ошибку 500 Internal Server Error (устаревший, для обратной совместимости). По умолчанию `False`.
 
 **Почему `validation_error=True` по умолчанию?**
 FastAPI автоматически валидирует все параметры (Path, Query, Body), поэтому 422 актуален в 95%+ эндпоинтов. Для эндпоинтов без параметров явно установите `validation_error=False` или `validation_error_422=False`.
 
 **Возвращает:**
-- Вызываемый объект, который возвращает `Dict[int, Dict[str, Any]]` в формате FastAPI responses
+- Объект Mapping (dict-like), который реализует `Dict[int, Dict[str, Any]]` для FastAPI responses
+- Можно использовать напрямую в параметре `responses` без вызова: `responses=Errors(...)`
 
 #### Использование
 

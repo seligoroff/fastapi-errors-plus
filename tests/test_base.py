@@ -302,3 +302,4 @@ class TestBaseErrorDTOCompatibility:
         assert status.HTTP_404_NOT_FOUND in responses
         assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
 
+

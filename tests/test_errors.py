@@ -446,6 +446,82 @@ class TestErrorsEdgeCases:
         assert len(errors) == 1
 
 
+class TestUniqueKeys:
+    """Tests for unique key generation to prevent collisions."""
+    
+    def test_unique_keys_for_standard_errors(self):
+        """Test that standard error keys are unique when merging."""
+        # First add flag (creates example), then add dict with examples containing same key
+        errors = Errors(
+            {401: {  # Positional first - adds "StandardUnauthorized" to examples
+                "content": {
+                    "application/json": {
+                        "examples": {
+                            "StandardUnauthorized": {"value": {"detail": "Custom"}},
+                        },
+                    },
+                },
+            }},
+            unauthorized_401=True,  # Named after positional - should use unique key
+        )
+        
+        # Should have both examples
+        examples = errors[401]["content"]["application/json"]["examples"]
+        # When dict is added first with "StandardUnauthorized", then flag is added
+        # Flag creates "example" which gets converted to "default" (not "StandardUnauthorized_2")
+        # This is because flag creates "example" first, then it's converted
+        assert "StandardUnauthorized" in examples  # From dict
+        assert "default" in examples  # From flag (converted from example)
+        
+        # Both examples should be present
+        assert len(examples) == 2
+        assert examples["StandardUnauthorized"]["value"]["detail"] == "Custom"
+        assert examples["default"]["value"]["detail"] == "Unauthorized"
+    
+    def test_unique_keys_for_dict_errors(self):
+        """Test that dict error keys are unique when merging."""
+        errors = Errors(
+            {401: {
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "First"},
+                    },
+                },
+            }},
+            {401: {
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "Second"},
+                    },
+                },
+            }},
+        )
+        
+        examples = errors[401]["content"]["application/json"]["examples"]
+        assert "default" in examples
+        # Second example should have unique key
+        assert "CustomExample" in examples or "CustomExample_2" in examples
+        assert len(examples) == 2
+    
+    def test_unique_keys_multiple_collisions(self):
+        """Test unique key generation with multiple collisions."""
+        errors = Errors()
+        examples = {
+            "CustomExample": {"value": {"detail": "First"}},
+            "CustomExample_2": {"value": {"detail": "Second"}},
+        }
+        
+        # Add another CustomExample - should become CustomExample_3
+        unique_key = errors._unique_key(examples, "CustomExample")
+        assert unique_key == "CustomExample_3"
+        
+        examples[unique_key] = {"value": {"detail": "Third"}}
+        
+        # Add another - should become CustomExample_4
+        unique_key = errors._unique_key(examples, "CustomExample")
+        assert unique_key == "CustomExample_4"
+
+
 class TestErrorsValidation:
     """Tests for ErrorDTO validation."""
     
@@ -530,4 +606,51 @@ class TestErrorsValidation:
         assert "message" in error_msg
         assert "to_example" in error_msg
         assert "BadObject" in error_msg
+
+
+class TestDTODescriptionPriority:
+    """Tests for DTO description priority over standard flags."""
+    
+    def test_dto_overrides_standard_description(self):
+        """Test that ErrorDTO description overrides standard flag description."""
+        from fastapi_errors_plus import StandardErrorDTO
+        
+        custom_401 = StandardErrorDTO(
+            status_code=401,
+            message="Custom Unauthorized",
+            examples={"Custom": "Custom auth error"},
+        )
+        
+        errors = Errors(
+            custom_401,  # Positional first
+            unauthorized_401=True,  # Named after - adds "Unauthorized"
+        )
+        
+        # DTO should override standard description
+        assert errors[401]["description"] == "Custom Unauthorized"
+    
+    def test_dto_does_not_override_custom_description(self):
+        """Test that DTO does not override non-standard description."""
+        from fastapi_errors_plus import StandardErrorDTO
+        
+        custom_401 = StandardErrorDTO(
+            status_code=401,
+            message="Another Custom",
+            examples={"Custom": "Custom auth error"},
+        )
+        
+        errors = Errors(
+            {401: {  # Positional first - custom description
+                "description": "My Custom Description",
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "Custom"},
+                    },
+                },
+            }},
+            custom_401,  # DTO should not override dict description
+        )
+        
+        # Dict description should be preserved (dict > DTO)
+        assert errors[401]["description"] == "My Custom Description"
 

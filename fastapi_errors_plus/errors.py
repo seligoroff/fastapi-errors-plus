@@ -1,7 +1,7 @@
 """Main Errors class for documenting errors in FastAPI endpoints."""
 
 from collections.abc import Mapping
-from typing import Any, Dict, Iterator, Union
+from typing import Any, Dict, Iterator, Optional, Union
 
 from fastapi import status
 
@@ -29,10 +29,7 @@ class Errors(Mapping):
         @router.delete(
             "/{id}",
             responses=Errors(
-                unauthorized_401=True,      # 401 (explicit)
-                forbidden_403=True,          # 403 (explicit)
-                validation_error_422=True,   # 422 (explicit)
-                {404: {                      # 404 via dict
+                {404: {                      # 404 via dict (positional first)
                     "description": "Not found",
                     "content": {
                         "application/json": {
@@ -40,6 +37,9 @@ class Errors(Mapping):
                         },
                     },
                 }},
+                unauthorized_401=True,      # 401 (explicit, named after positional)
+                forbidden_403=True,          # 403 (explicit)
+                # validation_error_422=True - not needed, defaults to True
             ),
         )
         def delete_item(id: int):
@@ -55,12 +55,12 @@ class Errors(Mapping):
         # Old parameters (for backward compatibility)
         unauthorized: bool = False,           # 401
         forbidden: bool = False,              # 403
-        validation_error: bool = None,        # 422 (None = use default True, False = disable, True = enable)
+        validation_error: Optional[bool] = None,        # 422 (None = use default True, False = disable, True = enable)
         internal_server_error: bool = False,  # 500
         # New parameters with explicit status codes (recommended)
         unauthorized_401: bool = False,      # 401 (explicit)
         forbidden_403: bool = False,          # 403 (explicit)
-        validation_error_422: bool = None,   # 422 (explicit, None = use default True, False = disable, True = enable)
+        validation_error_422: Optional[bool] = None,   # 422 (explicit, None = use default True, False = disable, True = enable)
         internal_server_error_500: bool = False,  # 500 (explicit)
     ) -> None:
         """Initialize Errors instance.
@@ -73,7 +73,10 @@ class Errors(Mapping):
                 Deprecated: Use `unauthorized_401` instead for explicit status code.
             forbidden: Add 403 Forbidden error. Defaults to False.
                 Deprecated: Use `forbidden_403` instead for explicit status code.
-            validation_error: Add 422 Unprocessable Entity error. Defaults to True (None means True).
+            validation_error: Add 422 Unprocessable Entity error. 
+                - None (default): Add 422 (True by default, FastAPI validates all parameters)
+                - False: Explicitly disable 422
+                - True: Explicitly enable 422
                 FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant
                 in 95%+ of endpoints. Set to False only for endpoints without parameters.
                 Deprecated: Use `validation_error_422` instead for explicit status code.
@@ -81,7 +84,10 @@ class Errors(Mapping):
                 Deprecated: Use `internal_server_error_500` instead for explicit status code.
             unauthorized_401: Add 401 Unauthorized error (explicit). Defaults to False.
             forbidden_403: Add 403 Forbidden error (explicit). Defaults to False.
-            validation_error_422: Add 422 Unprocessable Entity error (explicit). Defaults to True (None means True).
+            validation_error_422: Add 422 Unprocessable Entity error (explicit). 
+                - None (default): Add 422 (True by default, FastAPI validates all parameters)
+                - False: Explicitly disable 422
+                - True: Explicitly enable 422
                 FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant
                 in 95%+ of endpoints. Set to False only for endpoints without parameters.
             internal_server_error_500: Add 500 Internal Server Error (explicit). Defaults to False.
@@ -205,6 +211,38 @@ class Errors(Mapping):
                 f"Got {type(error).__name__}"
             )
     
+    def _unique_key(self, examples: Dict[str, Any], base: str) -> str:
+        """Generate unique key for examples dict.
+        
+        Args:
+            examples: Existing examples dict
+            base: Base key name
+            
+        Returns:
+            Unique key that doesn't exist in examples
+            
+        Example:
+            >>> errors = Errors()
+            >>> errors._unique_key({"default": {}}, "default")
+            "default_2"
+            >>> errors._unique_key({"default": {}, "default_2": {}}, "default")
+            "default_3"
+        """
+        key = base
+        i = 2
+        while key in examples:
+            key = f"{base}_{i}"
+            i += 1
+        return key
+    
+    # Standard descriptions for priority checking
+    STANDARD_DESCRIPTIONS = {
+        status.HTTP_401_UNAUTHORIZED: "Unauthorized",
+        status.HTTP_403_FORBIDDEN: "Forbidden",
+        status.HTTP_422_UNPROCESSABLE_ENTITY: "Validation Error",
+        status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
+    }
+    
     def _add_standard_error(
         self,
         status_code: int,
@@ -257,7 +295,9 @@ class Errors(Mapping):
                     content["examples"] = {}
             
             # Add new example with unique key (don't overwrite existing!)
-            content["examples"][example_key] = {"value": example}
+            # Check if example_key already exists in examples, use unique key if needed
+            unique_key = self._unique_key(content["examples"], example_key)
+            content["examples"][unique_key] = {"value": example}
             
             # Don't overwrite description if it already exists
             # Priority: dict > DTO > standard flags
@@ -334,7 +374,8 @@ class Errors(Mapping):
                                 existing_json["examples"]["default"] = {"value": response_json["example"]}
                             else:
                                 # If default exists, add with a unique key
-                                existing_json["examples"]["CustomExample"] = {"value": response_json["example"]}
+                                unique_key = self._unique_key(existing_json["examples"], "CustomExample")
+                                existing_json["examples"][unique_key] = {"value": response_json["example"]}
     
     def _add_error_dto(self, error_dto: ErrorDTO) -> None:
         """Add error from ErrorDTO (via Protocol).
@@ -373,6 +414,11 @@ class Errors(Mapping):
             # Merge examples for the same status code
             # Safely access content/application/json with defaults
             existing = self._responses[status_code]
+            
+            # If description is standard, replace it with DTO message (priority: DTO > flags)
+            if existing.get("description") == self.STANDARD_DESCRIPTIONS.get(status_code):
+                existing["description"] = error_dto.message
+            
             existing_content = existing.setdefault("content", {})
             content_json = existing_content.setdefault("application/json", {})
             existing_examples = content_json.get("examples", {})

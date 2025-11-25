@@ -349,11 +349,11 @@ Errors(
     *errors: Union[Dict[int, Dict[str, Any]], ErrorDTO],
     unauthorized: bool = False,
     forbidden: bool = False,
-    validation_error: bool = True,  # Defaults to True (FastAPI validates all parameters)
+    validation_error: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
     internal_server_error: bool = False,
     unauthorized_401: bool = False,
     forbidden_403: bool = False,
-    validation_error_422: bool = True,  # Defaults to True (FastAPI validates all parameters)
+    validation_error_422: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
     internal_server_error_500: bool = False,
 )
 ```
@@ -362,18 +362,25 @@ Errors(
 - `*errors`: Arbitrary errors as dict or ErrorDTO objects
 - `unauthorized_401`: Add 401 Unauthorized error (recommended, explicit). Defaults to `False`.
 - `forbidden_403`: Add 403 Forbidden error (recommended, explicit). Defaults to `False`.
-- `validation_error_422`: Add 422 Unprocessable Entity error (recommended, explicit). Defaults to `True` (FastAPI validates all parameters).
+- `validation_error_422`: Add 422 Unprocessable Entity error (recommended, explicit). 
+  - `None` (default): Add 422 (True by default, FastAPI validates all parameters)
+  - `False`: Explicitly disable 422
+  - `True`: Explicitly enable 422
 - `internal_server_error_500`: Add 500 Internal Server Error (recommended, explicit). Defaults to `False`.
 - `unauthorized`: Add 401 Unauthorized error (legacy, for backward compatibility). Defaults to `False`.
 - `forbidden`: Add 403 Forbidden error (legacy, for backward compatibility). Defaults to `False`.
-- `validation_error`: Add 422 Unprocessable Entity error (legacy, for backward compatibility). Defaults to `True` (FastAPI validates all parameters).
+- `validation_error`: Add 422 Unprocessable Entity error (legacy, for backward compatibility). 
+  - `None` (default): Add 422 (True by default, FastAPI validates all parameters)
+  - `False`: Explicitly disable 422
+  - `True`: Explicitly enable 422
 - `internal_server_error`: Add 500 Internal Server Error (legacy, for backward compatibility). Defaults to `False`.
 
 **Why `validation_error=True` by default?**
 FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant in 95%+ of endpoints. For endpoints without parameters, explicitly set `validation_error=False` or `validation_error_422=False`.
 
 **Returns:**
-- Callable object that returns `Dict[int, Dict[str, Any]]` in FastAPI responses format
+- Mapping object (dict-like) that implements `Dict[int, Dict[str, Any]]` for FastAPI responses
+- Can be used directly in `responses` parameter without calling: `responses=Errors(...)`
 
 #### Usage
 

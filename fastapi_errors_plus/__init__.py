@@ -10,5 +10,5 @@ __all__ = [
     "BaseErrorDTO",  # Base implementation (optional)
     "StandardErrorDTO",  # Extended implementation (optional)
 ]
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
