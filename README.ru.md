@@ -221,10 +221,10 @@ def delete_item(id: int):
 ```
 
 **Преимущества:**
-- ✅ Не нужно писать классы ErrorDTO с нуля
-- ✅ Правильная реализация из коробки
-- ✅ Переиспользование во всех эндпоинтах
-- ✅ Поддержка наследования для кастомной логики
+- Не нужно писать классы ErrorDTO с нуля
+- Правильная реализация из коробки
+- Переиспользование во всех эндпоинтах
+- Поддержка наследования для кастомной логики
 
 ### 5. Смешанное использование
 
@@ -293,6 +293,8 @@ class ErrorDTO(Protocol):
 
 Любой класс, реализующий этот протокол (через структурную типизацию), может использоваться с `Errors()`.
 
+**Best Practice:** Для максимальной ясности рассмотрите возможность реализации протокола ErrorDTO напрямую вашими доменными исключениями. См. [Best Practice: Связь исключений и ErrorDTO](#best-practice-связь-исключений-и-errordto) для подробностей.
+
 ### Когда использовать Protocol vs BaseErrorDTO
 
 **Используйте Protocol (структурная типизация)** когда:
@@ -306,6 +308,71 @@ class ErrorDTO(Protocol):
 - Нужны множественные примеры для стандартных HTTP ошибок (401, 403 и т.д.)
 
 Оба подхода работают вместе — вы можете смешивать их в одном вызове `Errors()`!
+
+## Best Practice: Связь исключений и ErrorDTO
+
+### Проблема
+
+Не всегда понятно, какое исключение соответствует какому ErrorDTO:
+
+```python
+# Непонятно, какое исключение документируется
+responses=Errors(notification_not_found_error)
+```
+
+### Решение: Domain Exception как ErrorDTO
+
+**Рекомендуемый подход** — сделайте ваши исключения реализующими протокол ErrorDTO:
+
+```python
+# domain/exceptions.py
+from typing import Dict, Any
+
+class DomainException(Exception):
+    """Базовое исключение, реализующее протокол ErrorDTO."""
+    status_code: int
+    message: str
+    
+    def to_example(self) -> Dict[str, Any]:
+        return {self.message: {"value": {"detail": self.message}}}
+    
+    @classmethod
+    def for_openapi(cls):
+        """Возвращает экземпляр для документации OpenAPI."""
+        return cls()
+
+class NotificationNotFoundError(DomainException):
+    status_code = 404
+    message = "Notification not found"
+    
+    def __init__(self, notification_id: str = ""):
+        self.notification_id = notification_id
+        super().__init__(self.message)
+    
+    @classmethod
+    def for_openapi(cls):
+        return cls(notification_id="example_id")
+
+# В эндпоинте
+@router.delete(
+    "/{notificationId}",
+    responses=Errors(
+        NotificationNotFoundError.for_openapi(),  # Явная связь!
+    ),
+)
+async def delete_notification(notification_id: str):
+    if not notification:
+        raise NotificationNotFoundError(notification_id)  # То же исключение!
+```
+
+**Преимущества:**
+- Исключение и ErrorDTO — один класс
+- Явная связь видна в эндпоинте
+- Нет дублирования
+- Type-safe
+- Работает с любой архитектурой проекта
+
+См. [examples/domain_exceptions.py](examples/domain_exceptions.py) для полного примера.
 
 ## Совместимость с существующими проектами
 

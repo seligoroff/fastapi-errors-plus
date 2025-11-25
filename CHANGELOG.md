@@ -11,6 +11,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2025-01-XX
+
+### Added
+- **Best Practice documentation**: Added comprehensive guide for connecting exceptions and ErrorDTO
+  - New section "Best Practice: Connecting Exceptions and ErrorDTO" in README
+  - Demonstrates recommended pattern: Domain Exception as ErrorDTO
+  - Shows how to make exceptions implement ErrorDTO protocol directly
+  - Benefits: clear connection visible in endpoint, no duplication, type-safe
+- **Example implementation**: Added `examples/domain_exceptions.py` with complete working example
+  - Base `DomainException` class implementing ErrorDTO protocol
+  - Example exceptions (`NotificationNotFoundError`, `NotificationAccessDeniedError`)
+  - Example endpoint usage
+  - Example exception handlers (commented)
+- **API Reference updates**: Added references to best practice in ErrorDTO Protocol section
+
+### Changed
+- **Documentation cleanup**: Removed emoji from all documentation files
+  - Cleaner, more professional appearance
+  - Better compatibility with various markdown renderers
+- **Coverage configuration**: Fixed htmlcov generation path
+  - Now generates in `tests/htmlcov/` instead of project root
+  - Configuration moved from `pytest.ini` to `pyproject.toml`
+
+### Migration Guide
+- **No breaking changes**: All changes are documentation and configuration improvements
+- **Best Practice**: Consider adopting Domain Exception as ErrorDTO pattern for better code clarity
+- **Coverage**: If you have custom coverage scripts, htmlcov will now be in `tests/htmlcov/` instead of root
+
+---
+
 ## [0.5.0] - 2025-01-XX
 
 ### Fixed
