@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+---
+
+## [0.1.1] - 2025-01-XX
+
+### Fixed
+- Fixed direct key access in `_add_standard_error()` and `_add_error_dto()` methods that could cause KeyError with incomplete dict structures
+- Improved robustness: replaced direct dictionary access with safe `setdefault()` calls
+- Code is now fully resilient to arbitrary dict structures
+
+### Changed
+- None
+
+---
+
+## [0.1.0] - 2025-01-XX
+
 ### Fixed
 - **Critical bug fix**: Fixed merging/overwriting logic for error examples (issue #5)
   - `_add_standard_error()` now uses unique keys (`StandardUnauthorized`, `StandardForbidden`, etc.) instead of overwriting `default`
