@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-41%20passed-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-72%20passed-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-83%25-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Universal library for documenting errors in FastAPI endpoints.
@@ -56,9 +56,9 @@ router = APIRouter()
                 },
             },
         }},
-        unauthorized=True,           # 401 Unauthorized
-        forbidden=True,               # 403 Forbidden
-        validation_error=True,       # 422 Validation Error
+        unauthorized_401=True,      # 401 Unauthorized (explicit)
+        forbidden_403=True,          # 403 Forbidden (explicit)
+        # validation_error_422=True - not needed, defaults to True
     ),
 )
 def delete_item(id: int):
@@ -73,23 +73,34 @@ def delete_item(id: int):
 
 Use boolean flags for common HTTP status codes:
 
+**Recommended (explicit status codes):**
+- `unauthorized_401=True` → 401 Unauthorized
+- `forbidden_403=True` → 403 Forbidden
+- `validation_error_422=True` → 422 Unprocessable Entity (defaults to `True`)
+- `internal_server_error_500=True` → 500 Internal Server Error
+
+**Legacy (for backward compatibility):**
 - `unauthorized=True` → 401 Unauthorized
 - `forbidden=True` → 403 Forbidden
-- `validation_error=True` → 422 Unprocessable Entity
+- `validation_error=True` → 422 Unprocessable Entity (defaults to `True`)
 - `internal_server_error=True` → 500 Internal Server Error
+
+**Note:** `validation_error` and `validation_error_422` default to `True` because FastAPI automatically validates all parameters (Path, Query, Body), making 422 relevant in 95%+ of endpoints. Set to `False` only for endpoints without parameters.
 
 ```python
 @router.get(
     "/protected",
     responses=Errors(
-        unauthorized=True,
-        forbidden=True,
+        unauthorized_401=True,  # Explicit: 401 is visible
+        forbidden_403=True,      # Explicit: 403 is visible
     ),
 )
 def get_protected():
     """Protected endpoint."""
     pass
 ```
+
+**Why explicit flags?** The new flags with status codes (`_401`, `_403`, etc.) make it immediately clear which HTTP status code corresponds to each flag, improving code readability without needing to remember the mapping.
 
 ### 2. Dict-based Errors
 
@@ -145,7 +156,76 @@ def get_resource(id: int):
     pass
 ```
 
-### 4. Mixed Usage
+### 4. BaseErrorDTO and StandardErrorDTO (Recommended)
+
+For convenience, the library provides ready-to-use implementations:
+
+#### BaseErrorDTO
+
+Simple implementation for errors with a single example:
+
+```python
+from fastapi_errors_plus import Errors, BaseErrorDTO
+
+notification_error = BaseErrorDTO(
+    status_code=404,
+    message="Notification not found",
+)
+
+@router.delete(
+    "/{id}",
+    responses=Errors(notification_error),
+)
+def delete_item(id: int):
+    """Delete an item."""
+    pass
+```
+
+#### StandardErrorDTO
+
+Extended implementation for errors with multiple examples (useful for standard HTTP errors):
+
+```python
+from fastapi_errors_plus import Errors, StandardErrorDTO
+
+unauthorized_error = StandardErrorDTO(
+    status_code=401,
+    message="Unauthorized",
+    examples={
+        "InvalidToken": "Ошибка декодирования токена.",
+        "SessionNotFound": "Сессия пользователя не была найдена.",
+    },
+)
+
+forbidden_error = StandardErrorDTO(
+    status_code=403,
+    message="Forbidden",
+    examples={
+        "AccountNotSelected": "Аккаунт не выбран.",
+        "RoleHasNoAccess": "Роль не имеет доступа.",
+    },
+)
+
+@router.delete(
+    "/{id}",
+    responses=Errors(
+        unauthorized_error,
+        forbidden_error,
+        # validation_error=True - not needed, defaults to True
+    ),
+)
+def delete_item(id: int):
+    """Delete an item."""
+    pass
+```
+
+**Benefits:**
+- ✅ No need to write ErrorDTO classes from scratch
+- ✅ Correct implementation out of the box
+- ✅ Reusable across all endpoints
+- ✅ Supports inheritance for custom logic
+
+### 5. Mixed Usage
 
 Combine flags, dict, and ErrorDTO:
 
@@ -164,6 +244,7 @@ Combine flags, dict, and ErrorDTO:
         MyErrorDTO(),  # ErrorDTO
         unauthorized=True,  # Flag
         forbidden=True,  # Flag
+        # validation_error=True - not needed, defaults to True
     ),
 )
 def create_item_mixed(id: int):
@@ -171,7 +252,7 @@ def create_item_mixed(id: int):
     pass
 ```
 
-### 5. Merging Examples
+### 6. Merging Examples
 
 Multiple errors with the same status code are automatically merged:
 
@@ -211,6 +292,20 @@ class ErrorDTO(Protocol):
 ```
 
 Any class implementing this protocol (through structural typing) can be used with `Errors()`.
+
+### When to Use Protocol vs BaseErrorDTO
+
+**Use Protocol (structural typing)** when:
+- Your project already has error DTOs that implement the protocol
+- You need maximum flexibility and custom implementations
+- You want to keep your existing error infrastructure
+
+**Use BaseErrorDTO/StandardErrorDTO** when:
+- Starting a new project or adding error documentation
+- You want a ready-to-use implementation without boilerplate
+- You need multiple examples for standard HTTP errors (401, 403, etc.)
+
+Both approaches work together — you can mix them in the same `Errors()` call!
 
 ## Compatibility with Existing Projects
 
@@ -254,17 +349,28 @@ Errors(
     *errors: Union[Dict[int, Dict[str, Any]], ErrorDTO],
     unauthorized: bool = False,
     forbidden: bool = False,
-    validation_error: bool = False,
+    validation_error: bool = True,  # Defaults to True (FastAPI validates all parameters)
     internal_server_error: bool = False,
+    unauthorized_401: bool = False,
+    forbidden_403: bool = False,
+    validation_error_422: bool = True,  # Defaults to True (FastAPI validates all parameters)
+    internal_server_error_500: bool = False,
 )
 ```
 
 **Parameters:**
 - `*errors`: Arbitrary errors as dict or ErrorDTO objects
-- `unauthorized`: Add 401 Unauthorized error
-- `forbidden`: Add 403 Forbidden error
-- `validation_error`: Add 422 Unprocessable Entity error
-- `internal_server_error`: Add 500 Internal Server Error
+- `unauthorized_401`: Add 401 Unauthorized error (recommended, explicit). Defaults to `False`.
+- `forbidden_403`: Add 403 Forbidden error (recommended, explicit). Defaults to `False`.
+- `validation_error_422`: Add 422 Unprocessable Entity error (recommended, explicit). Defaults to `True` (FastAPI validates all parameters).
+- `internal_server_error_500`: Add 500 Internal Server Error (recommended, explicit). Defaults to `False`.
+- `unauthorized`: Add 401 Unauthorized error (legacy, for backward compatibility). Defaults to `False`.
+- `forbidden`: Add 403 Forbidden error (legacy, for backward compatibility). Defaults to `False`.
+- `validation_error`: Add 422 Unprocessable Entity error (legacy, for backward compatibility). Defaults to `True` (FastAPI validates all parameters).
+- `internal_server_error`: Add 500 Internal Server Error (legacy, for backward compatibility). Defaults to `False`.
+
+**Why `validation_error=True` by default?**
+FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant in 95%+ of endpoints. For endpoints without parameters, explicitly set `validation_error=False` or `validation_error_422=False`.
 
 **Returns:**
 - Callable object that returns `Dict[int, Dict[str, Any]]` in FastAPI responses format
@@ -286,6 +392,48 @@ Protocol for error objects compatible with the library.
 
 **Required methods:**
 - `to_example() -> Dict[str, Any]` — Generate example for OpenAPI
+
+### `BaseErrorDTO`
+
+Base implementation of ErrorDTO Protocol for convenience.
+
+**Constructor:**
+```python
+BaseErrorDTO(
+    status_code: int,
+    message: str,
+)
+```
+
+**Example:**
+```python
+error = BaseErrorDTO(status_code=404, message="Not found")
+```
+
+### `StandardErrorDTO`
+
+Extended implementation for errors with multiple examples.
+
+**Constructor:**
+```python
+StandardErrorDTO(
+    status_code: int,
+    message: str,
+    examples: Optional[Dict[str, str]] = None,
+)
+```
+
+**Example:**
+```python
+error = StandardErrorDTO(
+    status_code=401,
+    message="Unauthorized",
+    examples={
+        "InvalidToken": "Invalid token",
+        "SessionNotFound": "Session not found",
+    },
+)
+```
 
 ## Examples
 
@@ -445,7 +593,7 @@ router = APIRouter()
     responses=Errors(
         unauthorized=True,  # From authentication dependency
         forbidden=True,     # From authorization dependency
-        validation_error=True,  # From FastAPI validation
+        # validation_error=True - not needed, defaults to True (FastAPI validates all parameters)
         ItemAlreadyExistsError(),  # Domain error
     ),
 )

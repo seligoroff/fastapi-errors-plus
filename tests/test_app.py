@@ -1,7 +1,7 @@
 """Test FastAPI application for integration testing."""
 
 from fastapi import APIRouter, FastAPI, status
-from fastapi_errors_plus import Errors
+from fastapi_errors_plus import BaseErrorDTO, Errors, StandardErrorDTO
 from tests.conftest import SimpleErrorDTO
 
 # Create test app
@@ -122,7 +122,7 @@ def update_item_merge_examples(item_id: int):
 # Example 6: Empty Errors (edge case)
 @router.get(
     "/empty-errors",
-    responses=Errors(),
+    responses=Errors(validation_error=False),  # Explicitly disable 422 for endpoint without parameters
 )
 def get_empty_errors():
     """Endpoint with no errors documented."""
@@ -152,6 +152,72 @@ def get_empty_errors():
 def delete_item_merge_flag_dict(item_id: int):
     """Endpoint demonstrating flag + dict merge."""
     return {"message": f"Item {item_id} deleted"}
+
+
+# Example 8: BaseErrorDTO
+@router.get(
+    "/base-error-dto/{item_id}",
+    responses=Errors(
+        BaseErrorDTO(
+            status_code=404,
+            message="Item not found",
+        ),
+    ),
+)
+def get_item_base_error_dto(item_id: int):
+    """Endpoint with BaseErrorDTO."""
+    return {"message": f"Item {item_id}"}
+
+
+# Example 9: StandardErrorDTO with multiple examples
+@router.delete(
+    "/standard-error-dto/{item_id}",
+    responses=Errors(
+        StandardErrorDTO(
+            status_code=401,
+            message="Unauthorized",
+            examples={
+                "InvalidToken": "Ошибка декодирования токена.",
+                "SessionNotFound": "Сессия пользователя не была найдена.",
+            },
+        ),
+        StandardErrorDTO(
+            status_code=403,
+            message="Forbidden",
+            examples={
+                "AccountNotSelected": "Аккаунт не выбран.",
+                "RoleHasNoAccess": "Роль не имеет доступа.",
+            },
+        ),
+    ),
+)
+def delete_item_standard_error_dto(item_id: int):
+    """Endpoint with StandardErrorDTO."""
+    return {"message": f"Item {item_id} deleted"}
+
+
+# Example 10: Mixed BaseErrorDTO + StandardErrorDTO + flags
+@router.post(
+    "/mixed-base-dto/{item_id}",
+    responses=Errors(
+        BaseErrorDTO(
+            status_code=404,
+            message="Item not found",
+        ),
+        StandardErrorDTO(
+            status_code=401,
+            message="Unauthorized",
+            examples={
+                "InvalidToken": "Invalid token",
+            },
+        ),
+        validation_error=True,
+        internal_server_error=True,
+    ),
+)
+def create_item_mixed_base_dto(item_id: int):
+    """Endpoint with mixed BaseErrorDTO, StandardErrorDTO, and flags."""
+    return {"message": f"Item {item_id} created"}
 
 
 # Register router

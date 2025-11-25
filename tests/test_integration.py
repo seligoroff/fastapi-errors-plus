@@ -21,7 +21,7 @@ class TestOpenAPIGeneration:
         assert "info" in schema
     
     def test_all_endpoints_in_openapi(self):
-        """Test that all 7 test endpoints are in OpenAPI schema."""
+        """Test that all 10 test endpoints are in OpenAPI schema."""
         client = TestClient(app)
         response = client.get("/openapi.json")
         schema = response.json()
@@ -34,6 +34,9 @@ class TestOpenAPIGeneration:
         assert "/api/v1/merge-examples/{item_id}" in paths
         assert "/api/v1/empty-errors" in paths
         assert "/api/v1/merge-flag-dict/{item_id}" in paths
+        assert "/api/v1/base-error-dto/{item_id}" in paths
+        assert "/api/v1/standard-error-dto/{item_id}" in paths
+        assert "/api/v1/mixed-base-dto/{item_id}" in paths
 
 
 class TestStandardFlagsEndpoint:
@@ -223,6 +226,99 @@ class TestMergeFlagDictEndpoint:
         assert "SessionNotFound" in examples
 
 
+class TestBaseErrorDTOEndpoint:
+    """Tests for BaseErrorDTO endpoint."""
+    
+    def test_responses_in_openapi(self):
+        """Test that BaseErrorDTO responses are in OpenAPI."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/base-error-dto/{item_id}"]["get"]
+        responses = endpoint["responses"]
+        
+        assert "404" in responses
+    
+    def test_404_response_structure_from_base_error_dto(self):
+        """Test 404 response structure from BaseErrorDTO."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/base-error-dto/{item_id}"]["get"]
+        error_404 = endpoint["responses"]["404"]
+        
+        assert error_404["description"] == "Item not found"
+        assert "content" in error_404
+        assert "application/json" in error_404["content"]
+        assert "examples" in error_404["content"]["application/json"]
+        examples = error_404["content"]["application/json"]["examples"]
+        assert "Item not found" in examples
+
+
+class TestStandardErrorDTOEndpoint:
+    """Tests for StandardErrorDTO endpoint."""
+    
+    def test_responses_in_openapi(self):
+        """Test that StandardErrorDTO responses are in OpenAPI."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/standard-error-dto/{item_id}"]["delete"]
+        responses = endpoint["responses"]
+        
+        assert "401" in responses
+        assert "403" in responses
+    
+    def test_401_multiple_examples_from_standard_error_dto(self):
+        """Test 401 response with multiple examples from StandardErrorDTO."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/standard-error-dto/{item_id}"]["delete"]
+        error_401 = endpoint["responses"]["401"]
+        
+        assert error_401["description"] == "Unauthorized"
+        examples = error_401["content"]["application/json"]["examples"]
+        assert "InvalidToken" in examples
+        assert "SessionNotFound" in examples
+    
+    def test_403_multiple_examples_from_standard_error_dto(self):
+        """Test 403 response with multiple examples from StandardErrorDTO."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/standard-error-dto/{item_id}"]["delete"]
+        error_403 = endpoint["responses"]["403"]
+        
+        assert error_403["description"] == "Forbidden"
+        examples = error_403["content"]["application/json"]["examples"]
+        assert "AccountNotSelected" in examples
+        assert "RoleHasNoAccess" in examples
+
+
+class TestMixedBaseDTOEndpoint:
+    """Tests for mixed BaseErrorDTO + StandardErrorDTO + flags endpoint."""
+    
+    def test_all_responses_in_openapi(self):
+        """Test that all mixed responses are in OpenAPI."""
+        client = TestClient(app)
+        response = client.get("/openapi.json")
+        schema = response.json()
+        
+        endpoint = schema["paths"]["/api/v1/mixed-base-dto/{item_id}"]["post"]
+        responses = endpoint["responses"]
+        
+        assert "401" in responses  # From StandardErrorDTO
+        assert "404" in responses  # From BaseErrorDTO
+        assert "422" in responses  # From flag
+        assert "500" in responses  # From flag
+
+
 class TestRealEndpoints:
     """Tests for actual endpoint responses."""
     
@@ -249,4 +345,21 @@ class TestRealEndpoints:
         
         assert response.status_code == 200
         assert response.json() == {"message": "Item 1 deleted"}
+    
+    def test_base_error_dto_endpoint_works(self):
+        """Test that BaseErrorDTO endpoint returns 200."""
+        client = TestClient(app)
+        response = client.get("/api/v1/base-error-dto/1")
+        
+        assert response.status_code == 200
+        assert response.json() == {"message": "Item 1"}
+    
+    def test_standard_error_dto_endpoint_works(self):
+        """Test that StandardErrorDTO endpoint returns 200."""
+        client = TestClient(app)
+        response = client.delete("/api/v1/standard-error-dto/1")
+        
+        assert response.status_code == 200
+        assert response.json() == {"message": "Item 1 deleted"}
+
 

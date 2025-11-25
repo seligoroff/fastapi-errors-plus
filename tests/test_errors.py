@@ -47,6 +47,80 @@ class TestErrorsStandardFlags:
         assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
         assert responses[status.HTTP_500_INTERNAL_SERVER_ERROR]["description"] == "Internal Server Error"
     
+    def test_unauthorized_401_flag(self):
+        """Test generation of 401 Unauthorized from explicit flag."""
+        errors = Errors(unauthorized_401=True)
+        responses = errors
+        
+        assert status.HTTP_401_UNAUTHORIZED in responses
+        assert responses[status.HTTP_401_UNAUTHORIZED]["description"] == "Unauthorized"
+    
+    def test_forbidden_403_flag(self):
+        """Test generation of 403 Forbidden from explicit flag."""
+        errors = Errors(forbidden_403=True)
+        responses = errors
+        
+        assert status.HTTP_403_FORBIDDEN in responses
+        assert responses[status.HTTP_403_FORBIDDEN]["description"] == "Forbidden"
+    
+    def test_validation_error_422_flag(self):
+        """Test generation of 422 Validation Error from explicit flag."""
+        errors = Errors(validation_error_422=True)
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert responses[status.HTTP_422_UNPROCESSABLE_ENTITY]["description"] == "Validation Error"
+    
+    def test_internal_server_error_500_flag(self):
+        """Test generation of 500 Internal Server Error from explicit flag."""
+        errors = Errors(internal_server_error_500=True)
+        responses = errors
+        
+        assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
+        assert responses[status.HTTP_500_INTERNAL_SERVER_ERROR]["description"] == "Internal Server Error"
+    
+    def test_new_flags_priority_over_old(self):
+        """Test that new explicit flags work independently of old flags."""
+        errors = Errors(unauthorized_401=True, forbidden_403=True, validation_error=False)
+        responses = errors
+        
+        assert status.HTTP_401_UNAUTHORIZED in responses
+        assert status.HTTP_403_FORBIDDEN in responses
+        assert len(responses) == 2
+    
+    def test_backward_compatibility_old_flags_still_work(self):
+        """Test that old flags continue to work for backward compatibility."""
+        errors = Errors(unauthorized=True, forbidden=True)
+        responses = errors
+        
+        assert status.HTTP_401_UNAUTHORIZED in responses
+        assert status.HTTP_403_FORBIDDEN in responses
+    
+    def test_mixed_old_and_new_flags(self):
+        """Test mixing old and new flags (both should work)."""
+        errors = Errors(
+            unauthorized=True,  # Old
+            forbidden_403=True,  # New
+            validation_error_422=True,  # New
+            internal_server_error=True,  # Old
+        )
+        responses = errors
+        
+        assert status.HTTP_401_UNAUTHORIZED in responses
+        assert status.HTTP_403_FORBIDDEN in responses
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
+        assert len(responses) == 4
+    
+    def test_both_old_and_new_same_flag(self):
+        """Test that both old and new flag for same status code work (OR logic)."""
+        errors = Errors(unauthorized=True, unauthorized_401=True, validation_error=False)
+        responses = errors
+        
+        # Should only have one 401 entry (not duplicated)
+        assert status.HTTP_401_UNAUTHORIZED in responses
+        assert len(responses) == 1
+    
     def test_multiple_flags(self):
         """Test generation of multiple standard flags."""
         errors = Errors(
@@ -106,7 +180,8 @@ class TestErrorsDict:
                         },
                     },
                 },
-            }
+            },
+            validation_error=False,  # Disable 422 for this test
         )
         responses = errors
         
@@ -157,7 +232,7 @@ class TestErrorsErrorDTO:
         """Test generation of responses from multiple ErrorDTO with different status codes."""
         error1 = simple_error_dto(status_code=404, message="Not found", detail="Not found")
         error2 = simple_error_dto(status_code=409, message="Conflict", detail="Conflict")
-        errors = Errors(error1, error2)
+        errors = Errors(error1, error2, validation_error=False)  # Disable 422 for this test
         responses = errors
         
         assert status.HTTP_404_NOT_FOUND in responses
@@ -241,6 +316,7 @@ class TestErrorsMixed:
             error_dto,
             unauthorized=True,
             forbidden=True,
+            validation_error=False,  # Disable 422 for this test
         )
         responses = errors
         
@@ -255,19 +331,75 @@ class TestErrorsEdgeCases:
     """Tests for edge cases."""
     
     def test_empty_errors(self):
-        """Test empty Errors instance."""
+        """Test empty Errors instance (validation_error=True by default)."""
         errors = Errors()
         responses = errors
         
         assert isinstance(responses, Mapping)
+        # validation_error=True by default, so 422 should be present
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert len(responses) == 1
+    
+    def test_validation_error_default_true(self):
+        """Test that validation_error is True by default."""
+        errors = Errors()
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert responses[status.HTTP_422_UNPROCESSABLE_ENTITY]["description"] == "Validation Error"
+    
+    def test_validation_error_can_be_disabled(self):
+        """Test that validation_error can be explicitly set to False."""
+        errors = Errors(validation_error=False)
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY not in responses
         assert len(responses) == 0
     
+    def test_validation_error_422_default_true(self):
+        """Test that validation_error_422 is True by default."""
+        errors = Errors()
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+    
+    def test_validation_error_422_can_be_disabled(self):
+        """Test that validation_error_422 can be explicitly set to False."""
+        errors = Errors(validation_error_422=False)
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY not in responses
+    
+    def test_validation_error_explicit_true_still_works(self):
+        """Test that explicit validation_error=True still works (backward compatibility)."""
+        errors = Errors(validation_error=True)
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+    
+    def test_validation_error_old_and_new_flags(self):
+        """Test that both old and new validation_error flags work together."""
+        errors = Errors(validation_error=False, validation_error_422=False)
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY not in responses
+    
+    def test_validation_error_with_other_errors(self):
+        """Test validation_error=True by default with other errors."""
+        errors = Errors(unauthorized_401=True, forbidden_403=True)
+        responses = errors
+        
+        assert status.HTTP_401_UNAUTHORIZED in responses
+        assert status.HTTP_403_FORBIDDEN in responses
+        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses  # Default True
+        assert len(responses) == 3
+    
     def test_no_flags_no_errors(self):
-        """Test Errors with no flags and no errors."""
+        """Test Errors with all flags explicitly set to False."""
         errors = Errors(
             unauthorized=False,
             forbidden=False,
-            validation_error=False,
+            validation_error=False,  # Explicitly disabled
             internal_server_error=False,
         )
         responses = errors
@@ -306,7 +438,7 @@ class TestErrorsEdgeCases:
     
     def test_errors_is_mapping(self):
         """Test that Errors implements Mapping protocol."""
-        errors = Errors(unauthorized=True)
+        errors = Errors(unauthorized=True, validation_error=False)  # Disable 422 to test only 401
         
         assert isinstance(errors, Mapping)
         assert 401 in errors

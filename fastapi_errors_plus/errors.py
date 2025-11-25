@@ -29,9 +29,9 @@ class Errors(Mapping):
         @router.delete(
             "/{id}",
             responses=Errors(
-                unauthorized=True,           # 401
-                forbidden=True,               # 403
-                validation_error=True,       # 422
+                unauthorized_401=True,      # 401 (explicit)
+                forbidden_403=True,          # 403 (explicit)
+                validation_error_422=True,   # 422 (explicit)
                 {404: {                      # 404 via dict
                     "description": "Not found",
                     "content": {
@@ -52,10 +52,16 @@ class Errors(Mapping):
         # Arbitrary errors (dict or ErrorDTO) - must come first
         *errors: Union[Dict[int, Dict[str, Any]], ErrorDTO],
         # Standard HTTP statuses (boolean flags)
+        # Old parameters (for backward compatibility)
         unauthorized: bool = False,           # 401
         forbidden: bool = False,              # 403
-        validation_error: bool = False,       # 422
+        validation_error: bool = None,        # 422 (None = use default True, False = disable, True = enable)
         internal_server_error: bool = False,  # 500
+        # New parameters with explicit status codes (recommended)
+        unauthorized_401: bool = False,      # 401 (explicit)
+        forbidden_403: bool = False,          # 403 (explicit)
+        validation_error_422: bool = None,   # 422 (explicit, None = use default True, False = disable, True = enable)
+        internal_server_error_500: bool = False,  # 500 (explicit)
     ) -> None:
         """Initialize Errors instance.
         
@@ -64,9 +70,21 @@ class Errors(Mapping):
                 Dict should be in FastAPI responses format: {status_code: {...}}.
                 ErrorDTO objects must implement the ErrorDTO protocol.
             unauthorized: Add 401 Unauthorized error. Defaults to False.
+                Deprecated: Use `unauthorized_401` instead for explicit status code.
             forbidden: Add 403 Forbidden error. Defaults to False.
-            validation_error: Add 422 Unprocessable Entity error. Defaults to False.
+                Deprecated: Use `forbidden_403` instead for explicit status code.
+            validation_error: Add 422 Unprocessable Entity error. Defaults to True (None means True).
+                FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant
+                in 95%+ of endpoints. Set to False only for endpoints without parameters.
+                Deprecated: Use `validation_error_422` instead for explicit status code.
             internal_server_error: Add 500 Internal Server Error. Defaults to False.
+                Deprecated: Use `internal_server_error_500` instead for explicit status code.
+            unauthorized_401: Add 401 Unauthorized error (explicit). Defaults to False.
+            forbidden_403: Add 403 Forbidden error (explicit). Defaults to False.
+            validation_error_422: Add 422 Unprocessable Entity error (explicit). Defaults to True (None means True).
+                FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant
+                in 95%+ of endpoints. Set to False only for endpoints without parameters.
+            internal_server_error_500: Add 500 Internal Server Error (explicit). Defaults to False.
         
         Example:
             ```python
@@ -90,25 +108,37 @@ class Errors(Mapping):
         self._responses: Dict[int, Dict[str, Any]] = {}
         
         # Add standard errors
-        if unauthorized:
+        # New parameters with explicit codes have priority, but old ones still work
+        if unauthorized_401 or unauthorized:
             self._add_standard_error(
                 status.HTTP_401_UNAUTHORIZED,
                 "Unauthorized",
                 {"detail": "Unauthorized"},
             )
-        if forbidden:
+        if forbidden_403 or forbidden:
             self._add_standard_error(
                 status.HTTP_403_FORBIDDEN,
                 "Forbidden",
                 {"detail": "Forbidden"},
             )
-        if validation_error:
+        # For validation_error: True by default (FastAPI validates all parameters)
+        # Add 422 unless at least one parameter is explicitly False
+        # If user sets validation_error=False, they want to disable 422 (even if validation_error_422 defaults to True)
+        # If user sets validation_error_422=False, they want to disable 422 (even if validation_error defaults to True)
+        # Only if both are explicitly False, we definitely don't add
+        # If at least one is True (or None which defaults to True) and neither is explicitly False, add
+        add_422 = True  # Default is True
+        if validation_error is False or validation_error_422 is False:
+            # At least one is explicitly False - don't add
+            add_422 = False
+        
+        if add_422:
             self._add_standard_error(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 "Validation Error",
                 {"detail": "Validation error"},
             )
-        if internal_server_error:
+        if internal_server_error_500 or internal_server_error:
             self._add_standard_error(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "Internal Server Error",

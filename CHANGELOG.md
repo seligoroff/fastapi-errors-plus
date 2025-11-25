@@ -11,6 +11,90 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2025-01-XX
+
+### Changed
+- **Breaking change (improvement)**: `validation_error` and `validation_error_422` now default to `True` instead of `False`
+  - FastAPI automatically validates all parameters (Path, Query, Body), making 422 relevant in 95%+ of endpoints
+  - This reduces repetitive code - no need to specify `validation_error=True` in every endpoint
+  - For endpoints without parameters, explicitly set `validation_error=False` or `validation_error_422=False`
+  - Existing code continues to work (explicit `validation_error=True` still works)
+  - This change improves documentation accuracy by default
+
+### Added
+- Comprehensive test suite for new default behavior:
+  - Tests for `validation_error=True` by default
+  - Tests for explicitly disabling validation_error
+  - Tests for backward compatibility (explicit `True` still works)
+  - Tests for mixing with other errors
+
+### Fixed
+- None
+
+### Migration Guide
+- **No action required**: Existing code continues to work without changes
+- **Optional optimization**: You can remove explicit `validation_error=True` from endpoints (it's now the default)
+- **For endpoints without parameters**: Add `validation_error=False` to disable 422 documentation
+
+---
+
+## [0.3.0] - 2025-01-XX
+
+### Added
+- **Explicit status code flags**: New parameters with status codes in names for better readability
+  - `unauthorized_401=True` → 401 Unauthorized (explicit)
+  - `forbidden_403=True` → 403 Forbidden (explicit)
+  - `validation_error_422=True` → 422 Unprocessable Entity (explicit)
+  - `internal_server_error_500=True` → 500 Internal Server Error (explicit)
+  - Status codes are now visible directly in the code, improving readability
+  - No need to remember which status code corresponds to which flag
+- Comprehensive test suite for new explicit flags:
+  - Tests for each new flag parameter
+  - Tests for backward compatibility (old flags still work)
+  - Tests for mixing old and new flags
+  - Tests for priority logic (new flags work independently)
+
+### Changed
+- Updated documentation to recommend explicit flags (`_401`, `_403`, etc.)
+- Updated examples in README to use new explicit flags
+- API Reference section updated with new parameters
+
+### Fixed
+- None
+
+### Deprecated
+- Old flag parameters (`unauthorized`, `forbidden`, `validation_error`, `internal_server_error`) are still supported for backward compatibility but are marked as deprecated in documentation. New code should use explicit flags with status codes.
+
+---
+
+## [0.2.0] - 2025-01-XX
+
+### Added
+- **BaseErrorDTO**: Base implementation of ErrorDTO Protocol for convenience
+  - Simple class for errors with a single example
+  - No need to write ErrorDTO classes from scratch
+  - Ready-to-use implementation with correct format
+- **StandardErrorDTO**: Extended implementation for errors with multiple examples
+  - Useful for standard HTTP errors (401, 403) with different causes
+  - Supports multiple examples in one error object
+  - Defaults to single example if not provided
+- Comprehensive test suite for BaseErrorDTO and StandardErrorDTO:
+  - 15 unit tests for base classes
+  - 6 integration tests with FastAPI
+  - Tests for inheritance and structural typing compatibility
+- Updated documentation with examples of BaseErrorDTO and StandardErrorDTO usage
+- New test endpoints in test_app.py demonstrating BaseErrorDTO and StandardErrorDTO
+
+### Changed
+- Updated `__init__.py` to export `BaseErrorDTO` and `StandardErrorDTO`
+- README now includes section "When to Use Protocol vs BaseErrorDTO"
+- API Reference section expanded with BaseErrorDTO and StandardErrorDTO documentation
+
+### Fixed
+- None
+
+---
+
 ## [0.1.1] - 2025-01-XX
 
 ### Fixed
