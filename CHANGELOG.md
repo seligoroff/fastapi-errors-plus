@@ -11,6 +11,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2025-01-XX
+
+### Fixed
+- **Deprecation warnings**: Replaced deprecated `HTTP_422_UNPROCESSABLE_ENTITY` with `HTTP_422_UNPROCESSABLE_CONTENT`
+  - Updated all 21 usages in codebase (3 in `errors.py`, 18 in tests)
+  - Eliminates all DeprecationWarning messages during test execution
+- **Pytest collection warnings**: Fixed `PytestCollectionWarning` for test exception classes
+  - Renamed `TestItemNotFoundError` → `MockItemNotFoundError`
+  - Renamed `TestItemAccessDeniedError` → `MockItemAccessDeniedError`
+  - Classes no longer conflict with pytest's test collection
+
+### Added
+- **Pytest markers**: Added support for test suite separation
+  - `@pytest.mark.unit` for unit tests (62 tests, 14 classes)
+  - `@pytest.mark.integration` for integration tests (30 tests, 13 classes)
+  - Allows selective test execution: `pytest -m unit` or `pytest -m integration`
+  - Documentation added in `localdocs/notes/pytest-markers.md`
+- **Pydantic integration documentation**: Added section "Using Pydantic with ErrorDTO" in README
+  - Shows how to use Pydantic models with ErrorDTO Protocol
+  - Includes examples for simple and complex error structures
+  - Clarifies that Pydantic is optional, not required
+  - Added tests for Pydantic integration (optional, skipped if Pydantic not installed)
+
+### Changed
+- **Configuration consolidation**: Removed `pytest.ini`, all settings moved to `pyproject.toml`
+  - Single source of truth for pytest configuration
+  - Eliminates synchronization issues between config files
+  - All pytest settings now in `[tool.pytest.ini_options]`
+- **Coverage file organization**: All coverage files now generated in `tests/` directory
+  - `tests/.coverage` (binary data)
+  - `tests/coverage.xml` (XML report)
+  - `tests/htmlcov/` (HTML report)
+  - Keeps project root clean
+
+### Migration Guide
+- **No breaking changes**: All changes are improvements and fixes
+- **For developers**: Use `pytest -m unit` or `pytest -m integration` to run specific test suites
+- **For users**: No action required, all changes are internal improvements
+
+---
+
 ## [0.6.1] - 2025-01-XX
 
 ### Added

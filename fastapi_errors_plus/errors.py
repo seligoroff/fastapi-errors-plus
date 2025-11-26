@@ -140,7 +140,7 @@ class Errors(Mapping):
         
         if add_422:
             self._add_standard_error(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 "Validation Error",
                 {"detail": "Validation error"},
             )
@@ -239,7 +239,7 @@ class Errors(Mapping):
     STANDARD_DESCRIPTIONS = {
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
         status.HTTP_403_FORBIDDEN: "Forbidden",
-        status.HTTP_422_UNPROCESSABLE_ENTITY: "Validation Error",
+        status.HTTP_422_UNPROCESSABLE_CONTENT: "Validation Error",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
     
@@ -263,7 +263,7 @@ class Errors(Mapping):
         standard_keys = {
             status.HTTP_401_UNAUTHORIZED: "StandardUnauthorized",
             status.HTTP_403_FORBIDDEN: "StandardForbidden",
-            status.HTTP_422_UNPROCESSABLE_ENTITY: "StandardValidationError",
+            status.HTTP_422_UNPROCESSABLE_CONTENT: "StandardValidationError",
             status.HTTP_500_INTERNAL_SERVER_ERROR: "StandardInternalServerError",
         }
         example_key = standard_keys.get(status_code, f"Standard{status_code}")

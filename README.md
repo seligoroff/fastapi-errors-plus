@@ -309,6 +309,102 @@ Any class implementing this protocol (through structural typing) can be used wit
 
 Both approaches work together — you can mix them in the same `Errors()` call!
 
+## Using Pydantic with ErrorDTO
+
+**Note:** Pydantic is **not required** to use this library. This section is for projects that already use Pydantic and want to integrate it with the ErrorDTO protocol.
+
+Since the library uses structural typing (Protocol), any class that implements the required attributes (`status_code`, `message`, `to_example()`) will work, including Pydantic models.
+
+### Simple Pydantic Model as ErrorDTO
+
+```python
+from pydantic import BaseModel, Field
+from fastapi_errors_plus import Errors
+from typing import Dict, Any
+
+class PydanticErrorDTO(BaseModel):
+    """Pydantic model implementing ErrorDTO Protocol."""
+    status_code: int = Field(..., ge=400, le=599, description="HTTP status code")
+    message: str = Field(..., min_length=1, description="Error message")
+    
+    def to_example(self) -> Dict[str, Any]:
+        """Generate example for OpenAPI."""
+        return {
+            self.message: {
+                "value": {"detail": self.message},
+            },
+        }
+
+# Usage
+notification_error = PydanticErrorDTO(
+    status_code=404,
+    message="Notification not found",
+)
+
+@router.delete(
+    "/{id}",
+    responses=Errors(notification_error),
+)
+def delete_item(id: int):
+    pass
+```
+
+**Benefits:**
+- Runtime validation through Pydantic
+- Type safety
+- Automatic field documentation
+- Works with ErrorDTO Protocol through structural typing
+
+### Complex ErrorDTO with Pydantic
+
+For errors with additional fields:
+
+```python
+from pydantic import BaseModel, Field
+from fastapi_errors_plus import Errors
+from typing import Dict, Any, Optional
+
+class DetailedErrorDTO(BaseModel):
+    """Pydantic model for errors with additional fields."""
+    status_code: int = Field(..., ge=400, le=599)
+    message: str = Field(..., min_length=1)
+    error_code: Optional[str] = Field(None, description="Internal error code")
+    timestamp: Optional[str] = Field(None, description="Error timestamp")
+    
+    def to_example(self) -> Dict[str, Any]:
+        """Generate example for OpenAPI."""
+        example = {"detail": self.message}
+        if self.error_code:
+            example["error_code"] = self.error_code
+        if self.timestamp:
+            example["timestamp"] = self.timestamp
+        
+        return {
+            self.message: {
+                "value": example,
+            },
+        }
+
+# Usage
+validation_error = DetailedErrorDTO(
+    status_code=422,
+    message="Validation failed",
+    error_code="VALIDATION_ERROR",
+    timestamp="2025-01-15T10:30:00Z",
+)
+```
+
+**When to use Pydantic with ErrorDTO:**
+- Your project already uses Pydantic extensively
+- You need runtime validation for error objects
+- You want automatic field documentation
+- You have complex error structures with multiple fields
+
+**When not to use Pydantic:**
+- Your project doesn't use Pydantic (use `BaseErrorDTO` or `StandardErrorDTO` instead)
+- You need simple error objects (dataclasses are sufficient)
+- You want to keep dependencies minimal
+
 ## Best Practice: Connecting Exceptions and ErrorDTO
 
 ### Problem

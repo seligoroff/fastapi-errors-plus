@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastapi-errors-plus"
-version = "0.6.1"
+version = "0.6.2"
 description = "Universal library for documenting errors in FastAPI endpoints"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -45,9 +45,23 @@ testpaths = ["tests"]
 python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
+markers = [
+    "unit: Unit tests for individual components",
+    "integration: Integration tests with FastAPI application",
+]
+addopts = [
+    "--cov=fastapi_errors_plus",
+    "--cov-report=term-missing",
+    "--cov-report=html:tests/htmlcov",
+    "--cov-report=xml:tests/coverage.xml",
+    "--cov-branch",
+    "--cov-fail-under=80",
+    "-v",
+]
 
 [tool.coverage.run]
 source = ["fastapi_errors_plus"]
+data_file = "tests/.coverage"
 omit = [
     "*/tests/*",
     "*/__pycache__/*",

@@ -1,6 +1,9 @@
 # Coverage
 htmlcov/
 tests/htmlcov/
+tests/.coverage
+tests/.coverage.*
+tests/coverage.xml
 .coverage
 .coverage.*
 coverage.xml

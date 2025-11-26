@@ -4,8 +4,10 @@ from fastapi import status
 from fastapi.testclient import TestClient
 
 from tests.test_app import app
+import pytest
 
 
+@pytest.mark.integration
 class TestOpenAPIGeneration:
     """Tests for OpenAPI specification generation."""
     
@@ -39,6 +41,7 @@ class TestOpenAPIGeneration:
         assert "/api/v1/mixed-base-dto/{item_id}" in paths
 
 
+@pytest.mark.integration
 class TestStandardFlagsEndpoint:
     """Tests for standard flags endpoint."""
     
@@ -71,6 +74,7 @@ class TestStandardFlagsEndpoint:
         assert "example" in error_401["content"]["application/json"]
 
 
+@pytest.mark.integration
 class TestDictErrorsEndpoint:
     """Tests for dict errors endpoint."""
     
@@ -100,6 +104,7 @@ class TestDictErrorsEndpoint:
         assert "application/json" in error_404["content"]
 
 
+@pytest.mark.integration
 class TestErrorDTOEndpoint:
     """Tests for ErrorDTO endpoint."""
     
@@ -129,6 +134,7 @@ class TestErrorDTOEndpoint:
         assert "examples" in error_404["content"]["application/json"]
 
 
+@pytest.mark.integration
 class TestMixedEndpoint:
     """Tests for mixed endpoint (flags + dict + ErrorDTO)."""
     
@@ -166,6 +172,7 @@ class TestMixedEndpoint:
         assert responses["409"]["description"] == "Conflict"
 
 
+@pytest.mark.integration
 class TestMergeExamplesEndpoint:
     """Tests for merge examples endpoint."""
     
@@ -187,6 +194,7 @@ class TestMergeExamplesEndpoint:
         assert "Error 2" in examples
 
 
+@pytest.mark.integration
 class TestEmptyErrorsEndpoint:
     """Tests for empty errors endpoint."""
     
@@ -206,6 +214,7 @@ class TestEmptyErrorsEndpoint:
         assert len(error_codes) == 0
 
 
+@pytest.mark.integration
 class TestMergeFlagDictEndpoint:
     """Tests for merge flag and dict endpoint."""
     
@@ -226,6 +235,7 @@ class TestMergeFlagDictEndpoint:
         assert "SessionNotFound" in examples
 
 
+@pytest.mark.integration
 class TestBaseErrorDTOEndpoint:
     """Tests for BaseErrorDTO endpoint."""
     
@@ -257,6 +267,7 @@ class TestBaseErrorDTOEndpoint:
         assert "Item not found" in examples
 
 
+@pytest.mark.integration
 class TestStandardErrorDTOEndpoint:
     """Tests for StandardErrorDTO endpoint."""
     
@@ -301,6 +312,7 @@ class TestStandardErrorDTOEndpoint:
         assert "RoleHasNoAccess" in examples
 
 
+@pytest.mark.integration
 class TestMixedBaseDTOEndpoint:
     """Tests for mixed BaseErrorDTO + StandardErrorDTO + flags endpoint."""
     
@@ -319,6 +331,7 @@ class TestMixedBaseDTOEndpoint:
         assert "500" in responses  # From flag
 
 
+@pytest.mark.integration
 class TestDomainExceptionEndpoint:
     """Tests for Domain Exception as ErrorDTO endpoint (Best Practice pattern)."""
     
@@ -332,8 +345,8 @@ class TestDomainExceptionEndpoint:
         responses = endpoint["responses"]
         
         assert "401" in responses  # From flag
-        assert "403" in responses  # From TestItemAccessDeniedError.for_openapi()
-        assert "404" in responses  # From TestItemNotFoundError.for_openapi()
+        assert "403" in responses  # From MockItemAccessDeniedError.for_openapi()
+        assert "404" in responses  # From MockItemNotFoundError.for_openapi()
     
     def test_404_response_structure_from_domain_exception(self):
         """Test 404 response structure from Domain Exception."""
@@ -369,9 +382,9 @@ class TestDomainExceptionEndpoint:
     
     def test_for_openapi_method_returns_error_dto(self):
         """Test that for_openapi() method returns instance implementing ErrorDTO."""
-        from tests.test_app import TestItemNotFoundError
+        from tests.test_app import MockItemNotFoundError
         
-        error_instance = TestItemNotFoundError.for_openapi()
+        error_instance = MockItemNotFoundError.for_openapi()
         
         # Check that it implements ErrorDTO protocol
         assert hasattr(error_instance, "status_code")
@@ -392,11 +405,11 @@ class TestDomainExceptionEndpoint:
     def test_domain_exception_works_with_errors_class(self):
         """Test that Domain Exception instances work with Errors class."""
         from fastapi_errors_plus import Errors
-        from tests.test_app import TestItemNotFoundError, TestItemAccessDeniedError
+        from tests.test_app import MockItemNotFoundError, MockItemAccessDeniedError
         
         errors = Errors(
-            TestItemNotFoundError.for_openapi(),
-            TestItemAccessDeniedError.for_openapi(),
+            MockItemNotFoundError.for_openapi(),
+            MockItemAccessDeniedError.for_openapi(),
         )
         responses = errors
         
@@ -406,6 +419,7 @@ class TestDomainExceptionEndpoint:
         assert responses[403]["description"] == "Test item access denied"
 
 
+@pytest.mark.integration
 class TestRealEndpoints:
     """Tests for actual endpoint responses."""
     

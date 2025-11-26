@@ -6,6 +6,7 @@ from fastapi import status
 from fastapi_errors_plus import BaseErrorDTO, Errors, StandardErrorDTO
 
 
+@pytest.mark.unit
 class TestBaseErrorDTO:
     """Tests for BaseErrorDTO class."""
     
@@ -69,6 +70,7 @@ class TestBaseErrorDTO:
         assert examples["Item not found"]["value"] == {"detail": "Item not found"}
 
 
+@pytest.mark.unit
 class TestStandardErrorDTO:
     """Tests for StandardErrorDTO class."""
     
@@ -197,6 +199,7 @@ class TestStandardErrorDTO:
         assert "InvalidToken" in examples  # From StandardErrorDTO
 
 
+@pytest.mark.unit
 class TestBaseErrorDTOInheritance:
     """Tests for inheritance from BaseErrorDTO."""
     
@@ -254,6 +257,7 @@ class TestBaseErrorDTOInheritance:
         assert "Custom" in examples
 
 
+@pytest.mark.unit
 class TestBaseErrorDTOCompatibility:
     """Tests for compatibility with structural typing (Protocol)."""
     
@@ -301,6 +305,7 @@ class TestBaseErrorDTOCompatibility:
         
         assert status.HTTP_404_NOT_FOUND in responses
         assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
+
 
 
 

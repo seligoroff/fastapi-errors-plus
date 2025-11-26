@@ -162,3 +162,4 @@ def can_access(notification: dict) -> bool:
 #         content={"detail": exc.message},
 #     )
 
+

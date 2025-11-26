@@ -9,6 +9,7 @@ from fastapi_errors_plus import Errors
 from tests.conftest import SimpleErrorDTO
 
 
+@pytest.mark.unit
 class TestErrorsStandardFlags:
     """Tests for standard HTTP status flags."""
     
@@ -36,8 +37,8 @@ class TestErrorsStandardFlags:
         errors = Errors(validation_error=True)
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
-        assert responses[status.HTTP_422_UNPROCESSABLE_ENTITY]["description"] == "Validation Error"
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
+        assert responses[status.HTTP_422_UNPROCESSABLE_CONTENT]["description"] == "Validation Error"
     
     def test_internal_server_error_flag(self):
         """Test generation of 500 Internal Server Error from flag."""
@@ -68,8 +69,8 @@ class TestErrorsStandardFlags:
         errors = Errors(validation_error_422=True)
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
-        assert responses[status.HTTP_422_UNPROCESSABLE_ENTITY]["description"] == "Validation Error"
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
+        assert responses[status.HTTP_422_UNPROCESSABLE_CONTENT]["description"] == "Validation Error"
     
     def test_internal_server_error_500_flag(self):
         """Test generation of 500 Internal Server Error from explicit flag."""
@@ -108,7 +109,7 @@ class TestErrorsStandardFlags:
         
         assert status.HTTP_401_UNAUTHORIZED in responses
         assert status.HTTP_403_FORBIDDEN in responses
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
         assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
         assert len(responses) == 4
     
@@ -133,11 +134,12 @@ class TestErrorsStandardFlags:
         
         assert status.HTTP_401_UNAUTHORIZED in responses
         assert status.HTTP_403_FORBIDDEN in responses
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
         assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
         assert len(responses) == 4
 
 
+@pytest.mark.unit
 class TestErrorsDict:
     """Tests for dict-based errors."""
     
@@ -214,6 +216,7 @@ class TestErrorsDict:
         assert "SessionNotFound" in examples
 
 
+@pytest.mark.unit
 class TestErrorsErrorDTO:
     """Tests for ErrorDTO-based errors."""
     
@@ -240,6 +243,7 @@ class TestErrorsErrorDTO:
         assert len(responses) == 2
 
 
+@pytest.mark.unit
 class TestErrorsMergeExamples:
     """Tests for merging examples for the same status code."""
     
@@ -296,6 +300,7 @@ class TestErrorsMergeExamples:
         assert "examples" in content or "example" in content
 
 
+@pytest.mark.unit
 class TestErrorsMixed:
     """Tests for mixed usage (flags + dict + ErrorDTO)."""
     
@@ -327,6 +332,7 @@ class TestErrorsMixed:
         assert len(responses) == 4
 
 
+@pytest.mark.unit
 class TestErrorsEdgeCases:
     """Tests for edge cases."""
     
@@ -337,7 +343,7 @@ class TestErrorsEdgeCases:
         
         assert isinstance(responses, Mapping)
         # validation_error=True by default, so 422 should be present
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
         assert len(responses) == 1
     
     def test_validation_error_default_true(self):
@@ -345,15 +351,15 @@ class TestErrorsEdgeCases:
         errors = Errors()
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
-        assert responses[status.HTTP_422_UNPROCESSABLE_ENTITY]["description"] == "Validation Error"
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
+        assert responses[status.HTTP_422_UNPROCESSABLE_CONTENT]["description"] == "Validation Error"
     
     def test_validation_error_can_be_disabled(self):
         """Test that validation_error can be explicitly set to False."""
         errors = Errors(validation_error=False)
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY not in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
         assert len(responses) == 0
     
     def test_validation_error_422_default_true(self):
@@ -361,28 +367,28 @@ class TestErrorsEdgeCases:
         errors = Errors()
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
     
     def test_validation_error_422_can_be_disabled(self):
         """Test that validation_error_422 can be explicitly set to False."""
         errors = Errors(validation_error_422=False)
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY not in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
     
     def test_validation_error_explicit_true_still_works(self):
         """Test that explicit validation_error=True still works (backward compatibility)."""
         errors = Errors(validation_error=True)
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
     
     def test_validation_error_old_and_new_flags(self):
         """Test that both old and new validation_error flags work together."""
         errors = Errors(validation_error=False, validation_error_422=False)
         responses = errors
         
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY not in responses
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
     
     def test_validation_error_with_other_errors(self):
         """Test validation_error=True by default with other errors."""
@@ -391,7 +397,7 @@ class TestErrorsEdgeCases:
         
         assert status.HTTP_401_UNAUTHORIZED in responses
         assert status.HTTP_403_FORBIDDEN in responses
-        assert status.HTTP_422_UNPROCESSABLE_ENTITY in responses  # Default True
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses  # Default True
         assert len(responses) == 3
     
     def test_no_flags_no_errors(self):
@@ -446,6 +452,7 @@ class TestErrorsEdgeCases:
         assert len(errors) == 1
 
 
+@pytest.mark.unit
 class TestUniqueKeys:
     """Tests for unique key generation to prevent collisions."""
     
@@ -522,6 +529,7 @@ class TestUniqueKeys:
         assert unique_key == "CustomExample_4"
 
 
+@pytest.mark.unit
 class TestErrorsValidation:
     """Tests for ErrorDTO validation."""
     
@@ -608,6 +616,7 @@ class TestErrorsValidation:
         assert "BadObject" in error_msg
 
 
+@pytest.mark.unit
 class TestDTODescriptionPriority:
     """Tests for DTO description priority over standard flags."""
     
@@ -653,4 +662,94 @@ class TestDTODescriptionPriority:
         
         # Dict description should be preserved (dict > DTO)
         assert errors[401]["description"] == "My Custom Description"
+
+
+@pytest.mark.unit
+class TestPydanticIntegration:
+    """Tests for Pydantic model integration with ErrorDTO Protocol.
+    
+    These tests are optional - they will be skipped if Pydantic is not installed.
+    This demonstrates that the library works with Pydantic models through structural typing,
+    but Pydantic is not a required dependency.
+    """
+    
+    def test_pydantic_model_as_error_dto(self):
+        """Test that Pydantic models work with ErrorDTO Protocol (with proper skip)."""
+        try:
+            from pydantic import BaseModel, Field
+            from typing import Dict, Any
+        except ImportError:
+            pytest.skip("Pydantic is not installed - this is expected and OK")
+        
+        class PydanticErrorDTO(BaseModel):
+            """Pydantic model implementing ErrorDTO Protocol."""
+            status_code: int = Field(..., ge=400, le=599)
+            message: str = Field(..., min_length=1)
+            
+            def to_example(self) -> Dict[str, Any]:
+                """Generate example for OpenAPI."""
+                return {
+                    self.message: {
+                        "value": {"detail": self.message},
+                    },
+                }
+        
+        # Create instance
+        error = PydanticErrorDTO(
+            status_code=404,
+            message="Not found",
+        )
+        
+        # Use with Errors class
+        errors = Errors(error, validation_error=False)
+        responses = errors
+        
+        assert status.HTTP_404_NOT_FOUND in responses
+        assert responses[status.HTTP_404_NOT_FOUND]["description"] == "Not found"
+    
+    def test_pydantic_model_with_additional_fields(self):
+        """Test Pydantic model with additional fields."""
+        try:
+            from pydantic import BaseModel, Field
+            from typing import Dict, Any, Optional
+        except ImportError:
+            pytest.skip("Pydantic is not installed - this is expected and OK")
+        
+        class DetailedErrorDTO(BaseModel):
+            """Pydantic model for errors with additional fields."""
+            status_code: int = Field(..., ge=400, le=599)
+            message: str = Field(..., min_length=1)
+            error_code: Optional[str] = Field(None, description="Internal error code")
+            
+            def to_example(self) -> Dict[str, Any]:
+                """Generate example for OpenAPI."""
+                example = {"detail": self.message}
+                if self.error_code:
+                    example["error_code"] = self.error_code
+                
+                return {
+                    self.message: {
+                        "value": example,
+                    },
+                }
+        
+        # Create instance
+        error = DetailedErrorDTO(
+            status_code=422,
+            message="Validation failed",
+            error_code="VALIDATION_ERROR",
+        )
+        
+        # Use with Errors class
+        errors = Errors(error, validation_error=False)
+        responses = errors
+        
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
+        assert responses[status.HTTP_422_UNPROCESSABLE_CONTENT]["description"] == "Validation failed"
+        
+        # Check that error_code is in the example
+        examples = responses[status.HTTP_422_UNPROCESSABLE_CONTENT]["content"]["application/json"]["examples"]
+        example_value = examples["Validation failed"]["value"]
+        assert example_value["detail"] == "Validation failed"
+        assert example_value["error_code"] == "VALIDATION_ERROR"
 
