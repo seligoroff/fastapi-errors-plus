@@ -37,6 +37,12 @@ class BaseErrorDTO:
     message: str
     """Error message description."""
     
+    openapi_json_extras: Optional[Dict[str, Any]] = field(default=None)
+    """Optional OpenAPI fragment under ``content['application/json']`` besides examples,
+    typically ``{\"schema\": ...}`` or ``encoding``. Do **not** put ``example`` / ``examples``
+    here — use :meth:`to_example`. Arbitrary implementations may instead implement
+    :meth:`to_openapi_json_media_type_extras`; that return value wins over this attribute."""
+    
     def to_example(self) -> Dict[str, Any]:
         """Generate example for OpenAPI.
         

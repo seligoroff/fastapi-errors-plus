@@ -10,6 +10,11 @@ Benefits:
 - No duplication
 - Type-safe
 - Works with any project architecture
+
+Structured error bodies that need OpenAPI JSON ``schema`` (e.g. ADR fields
+``code`` / ``detail`` / ``context``) alongside examples: see README section
+*"OpenAPI extras (`schema`) next to examples"* — ``openapi_json_extras`` on
+``BaseErrorDTO`` / ``StandardErrorDTO`` or ``to_openapi_json_media_type_extras()`` on custom DTOs.
 """
 
 from typing import Dict, Any

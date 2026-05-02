@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-05-02
+
+Semver: **minor** — additive API (`openapi_json_extras`, optional `to_openapi_json_media_type_extras()`), richer OpenAPI merge for **`application/json`**, plus backward-compatible import fix for 422.
+
+### Fixed
+
+- **Import on older Starlette/FastAPI**: resolve 422 status without requiring `HTTP_422_UNPROCESSABLE_CONTENT` (fallback to `HTTP_422_UNPROCESSABLE_ENTITY` or literal `422`), so importing the package does not crash on stacks that only expose the older name; avoid eager access to deprecated `ENTITY` when `CONTENT` is present (no spurious `DeprecationWarning` on import).
+
 ### Added
+
+- **OpenAPI media type merge**: when merging a responses **`dict`** into an existing status, fields under `content["application/json"]` other than `example` / `examples` (notably **`schema`**, **`encoding`**) are merged in; a later dict overwrites on conflict. Same-status **`model`** on the outer response dict is merged the same way. Enables **ErrorDTO examples + JSON Schema** without duplicating the status key.
+- **`openapi_json_extras`** on **`BaseErrorDTO`** / **`StandardErrorDTO`**: attach **`schema`** (and other non-example Media Type keys) beside **`to_example()`** without an extra **`dict`** in **`Errors`**.
+- **`to_openapi_json_media_type_extras()`** optional on custom **`ErrorDTO`** implementations — return value merges like dict extras (overrides **`openapi_json_extras`** when both provided).
 
 ---
 

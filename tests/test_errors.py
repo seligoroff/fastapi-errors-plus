@@ -301,6 +301,159 @@ class TestErrorsMergeExamples:
 
 
 @pytest.mark.unit
+class TestErrorsOpenApiSchemaMerge:
+    """Merging schema / non-example Media Type keys with ErrorDTO or other dict fragments."""
+
+    def test_merge_error_dto_then_dict_adds_schema(self, simple_error_dto):
+        """Examples from ErrorDTO plus OpenAPI schema from a second fragment (same status)."""
+        error_dto = simple_error_dto(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="NotFound",
+            detail="nothing",
+        )
+        schema_frag = {"$ref": "#/components/schemas/AppError"}
+        errors = Errors(
+            error_dto,
+            {
+                status.HTTP_404_NOT_FOUND: {
+                    "content": {
+                        "application/json": {
+                            "schema": schema_frag,
+                        },
+                    },
+                },
+            },
+            validation_error=False,
+        )
+        aj = errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]
+        assert aj["schema"] == schema_frag
+        assert len(aj["examples"]) >= 1
+        assert "NotFound" in aj["examples"]
+
+    def test_merge_dict_schema_then_error_dto_keeps_schema(self, simple_error_dto):
+        """Schema-only fragment first; DTO merges examples without dropping schema."""
+        schema_frag = {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"},
+                "detail": {"type": "string"},
+            },
+        }
+        error_dto = simple_error_dto(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="NotFound",
+            detail="nothing",
+        )
+        errors = Errors(
+            {
+                status.HTTP_404_NOT_FOUND: {
+                    "content": {"application/json": {"schema": schema_frag}},
+                },
+            },
+            error_dto,
+            validation_error=False,
+        )
+        aj = errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]
+        assert aj["schema"] == schema_frag
+        assert "NotFound" in aj["examples"]
+
+    def test_later_dict_schema_overwrites_earlier(self):
+        """Second dict for the same status overwrites schema (dict wins, same as description)."""
+        errors = Errors(
+            {
+                status.HTTP_404_NOT_FOUND: {
+                    "content": {"application/json": {"schema": {"type": "string"}}},
+                },
+            },
+            {
+                status.HTTP_404_NOT_FOUND: {
+                    "content": {"application/json": {"schema": {"type": "object"}}},
+                },
+            },
+            validation_error=False,
+        )
+        assert (
+            errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]["schema"]["type"]
+            == "object"
+        )
+
+    def test_merge_non_example_encoding_key_from_dict(self):
+        errors = Errors(
+            {
+                status.HTTP_404_NOT_FOUND: {
+                    "content": {"application/json": {"encoding": "utf-8"}},
+                },
+            },
+            validation_error=False,
+        )
+        assert (
+            errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]["encoding"]
+            == "utf-8"
+        )
+
+    def test_openapi_json_extras_without_second_fragment_dict(self):
+        """ADR-style payload: schema on BaseErrorDTO, no duplicate status dict required."""
+        from fastapi_errors_plus import BaseErrorDTO
+
+        adr_schema = {
+            "type": "object",
+            "properties": {
+                "code": {"type": "string"},
+                "detail": {"type": "string"},
+                "context": {"type": "object"},
+            },
+        }
+        err = BaseErrorDTO(
+            status_code=status.HTTP_409_CONFLICT,
+            message="BusinessRule",
+            openapi_json_extras={
+                "schema": adr_schema,
+            },
+        )
+        errors = Errors(err, validation_error=False)
+        aj = errors[status.HTTP_409_CONFLICT]["content"]["application/json"]
+        assert aj["schema"] is adr_schema
+        assert aj["examples"]["BusinessRule"]["value"]["detail"] == "BusinessRule"
+
+    def test_later_dict_overwrites_schema_from_dto_openapi_json_extras(self):
+        from fastapi_errors_plus import BaseErrorDTO
+
+        dto = BaseErrorDTO(
+            status_code=status.HTTP_404_NOT_FOUND,
+            message="Missing",
+            openapi_json_extras={"schema": {"type": "string"}},
+        )
+        errors = Errors(
+            dto,
+            {
+                status.HTTP_404_NOT_FOUND: {
+                    "content": {"application/json": {"schema": {"type": "object"}}},
+                },
+            },
+            validation_error=False,
+        )
+        schema = errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]["schema"]
+        assert schema["type"] == "object"
+
+    def test_to_openapi_json_media_type_extras_overrides_attribute(self):
+        class CustomDTO:
+            status_code = status.HTTP_403_FORBIDDEN
+            message = "Denied"
+            openapi_json_extras = {"schema": {"type": "string"}}
+
+            def to_example(self):  # type: ignore[no-untyped-def]
+                return {
+                    self.message: {"value": {"detail": "no"}},
+                }
+
+            def to_openapi_json_media_type_extras(self):  # type: ignore[no-untyped-def]
+                return {"schema": {"description": "from method"}}
+
+        errors = Errors(CustomDTO(), validation_error=False)
+        assert errors[403]["content"]["application/json"]["schema"]["description"] == "from method"
+
+
+@pytest.mark.unit
 class TestErrorsMixed:
     """Tests for mixed usage (flags + dict + ErrorDTO)."""
     

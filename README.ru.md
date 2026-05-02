@@ -4,12 +4,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-72%20passed-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
-[![Coverage](https://img.shields.io/badge/coverage-83%25-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-101-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Универсальная библиотека для документирования ошибок в эндпоинтах FastAPI.
 
-> [English version of README](README.md)
+> [English version of README](https://github.com/seligoroff/fastapi-errors-plus/blob/main/README.md)
 
 ## Философия
 
@@ -182,6 +182,39 @@ def delete_item(id: int):
     pass
 ```
 
+#### OpenAPI дополнения (`schema`) рядом с примерами
+
+Структурированное тело ошибки (ADR: **`code`**, **`detail`**, при необходимости **`context`**) нуждается не только в **примерах**, но и в **`schema`** в спецификации. На **`BaseErrorDTO`** и **`StandardErrorDTO`** для этого есть **`openapi_json_extras`** — словарь, который мержится в `content["application/json"]`; не задавайте там **`example`** / **`examples`** (их по-прежнему описывает **`to_example()`**):
+
+```python
+from fastapi import APIRouter, status
+from fastapi_errors_plus import BaseErrorDTO, Errors
+
+ADR_ERROR_BODY_SCHEMA = {
+    "type": "object",
+    "required": ["code", "detail"],
+    "properties": {
+        "code": {"type": "string"},
+        "detail": {"type": "string"},
+        "context": {"type": "object"},
+    },
+}
+
+business_conflict = BaseErrorDTO(
+    status_code=status.HTTP_409_CONFLICT,
+    message="BusinessRuleViolation",
+    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
+)
+
+router = APIRouter()
+
+@router.post("/items", responses=Errors(business_conflict, validation_error=False))
+def create_item():
+    ...
+```
+
+На **кастомных** классах **ErrorDTO** вместо поля можно реализовать **`to_openapi_json_media_type_extras()`**, возвращающий **`dict`**; если он непустой, он имеет приоритет над **`openapi_json_extras`**. Более поздний **`dict`** в **`Errors`** для того же статус-кода по-прежнему перезаписывает совпадающие ключи в **`application/json`** (те же правила, что при слиянии двух dict).
+
 #### StandardErrorDTO
 
 Расширенная реализация для ошибок с множественными примерами (полезно для стандартных HTTP ошибок):
@@ -245,6 +278,7 @@ def delete_item(id: int):
         MyErrorDTO(),  # ErrorDTO
         unauthorized=True,  # Флаг
         forbidden=True,  # Флаг
+        # validation_error=True - не нужно указывать, по умолчанию True
     ),
 )
 def create_item_mixed(id: int):
@@ -271,6 +305,39 @@ def update_item(id: int):
 
 В OpenAPI спецификации будут оба примера под статус-кодом 404.
 
+При объединении одного и того же статус-кода **dict выигрывает по полю `description`** у стандартного текста из флагов библиотеки; **`message`** из **ErrorDTO** может заменить описание только пока оно совпадает со стандартной подписью библиотеки для этого кода (описание, заданное через dict, классами DTO не перезаписывается).
+
+Под `content["application/json"]` по-прежнему мержатся `example` / `examples`; **остальные** поля типа **`schema`**, **`encoding`** из **более позднего dict** добавляются (и перезаписываются по тем же правилам, что и **`description`**).
+
+Пример без дубля «примерной» записи статус-кода можно собрать из **одного ErrorDTO** (примеры) и **dict** только со **`schema`**:
+
+```python
+from fastapi import status
+
+Errors(
+    conflict_error_doc,  # ErrorDTO, напр. .for_openapi() под ADR
+    {
+        status.HTTP_409_CONFLICT: {
+            "description": "Нарушение бизнес-правила",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "code": {"type": "string"},
+                            "detail": {"type": "string"},
+                            "context": {"type": "object"},
+                        },
+                    },
+                },
+            },
+        },
+    },
+)
+```
+
+При пересечениях ключей важен **порядок аргументов**: **более поздний** dict в **`Errors`** перезаписывает **`schema`**, **`encoding`** и ключ **`model`** на верхнем уровне ответа при повторении.
+
 ## Протокол ErrorDTO
 
 Протокол `ErrorDTO` определяет интерфейс для объектов ошибок, совместимых с библиотекой:
@@ -292,6 +359,11 @@ class ErrorDTO(Protocol):
 ```
 
 Любой класс, реализующий этот протокол (через структурную типизацию), может использоваться с `Errors()`.
+
+Необязательно (дополнение к телу ошибки OpenAPI без дубля dict):
+
+- атрибут **`openapi_json_extras`**: словарь для **`content["application/json"]`** (часто `{"schema": ...}` — **не** для `example` / `examples`);
+- или метод **`to_openapi_json_media_type_extras() -> Optional[dict]`**, если есть и вернул непустой dict — переопределяет **`openapi_json_extras`**.
 
 **Best Practice:** Для максимальной ясности рассмотрите возможность реализации протокола ErrorDTO напрямую вашими доменными исключениями. См. [Best Practice: Связь исключений и ErrorDTO](#best-practice-связь-исключений-и-errordto) для подробностей.
 
@@ -542,14 +614,15 @@ Errors(
 FastAPI автоматически валидирует все параметры (Path, Query, Body), поэтому 422 актуален в 95%+ эндпоинтов. Для эндпоинтов без параметров явно установите `validation_error=False` или `validation_error_422=False`.
 
 **Возвращает:**
-- Объект Mapping (dict-like), который реализует `Dict[int, Dict[str, Any]]` для FastAPI responses
-- Можно использовать напрямую в параметре `responses` без вызова: `responses=Errors(...)`
+- Объект вроде словаря (`Mapping[int, …]`), пригодный для поля `responses` FastAPI / OpenAPI
+- Передавайте экземпляр **как есть** — без вызова через круглые скобки: `responses=Errors(...)`
 
 #### Использование
 
 ```python
-# Вызовите экземпляр, чтобы получить dict responses
-responses = Errors(unauthorized=True)
+# Экземпляр ведёт себя как отображение по HTTP статус-кодам (Mapping)
+error_responses = Errors(unauthorized_401=True, forbidden_403=True)
+documented = error_responses[401]  # фрагмент ответа для OpenAPI
 ```
 
 ### `ErrorDTO`
@@ -563,6 +636,8 @@ responses = Errors(unauthorized=True)
 **Обязательные методы:**
 - `to_example() -> Dict[str, Any]` — Генерирует пример для OpenAPI
 
+При инициализации `Errors(...)` объекты из `*errors`, которые не являются `dict` и не содержат `status_code`, `message` или вызываемого `to_example`, вызывают **`TypeError`** с указанием, чего не хватает.
+
 ### `BaseErrorDTO`
 
 Базовая реализация протокола ErrorDTO для удобства.
@@ -572,6 +647,7 @@ responses = Errors(unauthorized=True)
 BaseErrorDTO(
     status_code: int,
     message: str,
+    openapi_json_extras: Optional[Dict[str, Any]] = None,
 )
 ```
 
@@ -589,6 +665,7 @@ error = BaseErrorDTO(status_code=404, message="Not found")
 StandardErrorDTO(
     status_code: int,
     message: str,
+    openapi_json_extras: Optional[Dict[str, Any]] = None,
     examples: Optional[Dict[str, str]] = None,
 )
 ```
@@ -640,7 +717,7 @@ def delete_item(id: int):
 ```python
 from fastapi import APIRouter
 from fastapi_errors_plus import Errors
-from api.exceptions.dto import errors  # DTO ошибок вашего проекта
+from api.exceptions.dto import notification_not_found_error  # экземпляр, совместимый с ErrorDTO
 
 router = APIRouter()
 
@@ -649,7 +726,7 @@ router = APIRouter()
     responses=Errors(
         unauthorized=True,
         forbidden=True,
-        errors.notification_not_found_error,  # Ваш ErrorDTO
+        notification_not_found_error,
     ),
 )
 async def delete_notification(notification_id: int):
@@ -688,40 +765,33 @@ def delete_item(id: int):
 
 **Domain Layer** (`domain/errors.py`):
 ```python
-from typing import Protocol, Dict, Any
+from typing import Dict, Any
 
-class DomainError(Protocol):
-    """Протокол доменной ошибки, совместимый с ErrorDTO."""
+class DomainException(Exception):
+    """Доменное исключение: и рантайм, и форма как ErrorDTO для OpenAPI."""
+
     status_code: int
     message: str
-    
-    def to_example(self) -> Dict[str, Any]:
-        """Генерирует пример для OpenAPI."""
-        ...
 
-class ItemNotFoundError:
-    """Доменная ошибка для случая, когда элемент не найден."""
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+    def to_example(self) -> Dict[str, Any]:
+        return {
+            self.message: {
+                "value": {"detail": self.message},
+            },
+        }
+
+
+class ItemNotFoundError(DomainException):
     status_code = 404
     message = "Item not found"
-    
-    def to_example(self) -> Dict[str, Any]:
-        return {
-            "ItemNotFound": {
-                "value": {"detail": "Item not found"},
-            },
-        }
 
-class ItemAlreadyExistsError:
-    """Доменная ошибка для случая, когда элемент уже существует."""
+
+class ItemAlreadyExistsError(DomainException):
     status_code = 409
     message = "Item already exists"
-    
-    def to_example(self) -> Dict[str, Any]:
-        return {
-            "ItemAlreadyExists": {
-                "value": {"detail": "Item already exists"},
-            },
-        }
 ```
 
 **Application Layer** (`application/use_cases.py`):

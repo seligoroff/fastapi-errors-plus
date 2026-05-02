@@ -8,6 +8,13 @@ class ErrorDTO(Protocol):
     
     Any class implementing this protocol can be used with Errors().
     
+    Optionally, objects may expose **OpenAPI extras** besides examples:
+    
+    - ``openapi_json_extras``: ``dict`` merged into ``content["application/json"]``  
+      (e.g. ``{"schema": ...}`` — do **not** use for ``example`` / ``examples``).
+    - or ``to_openapi_json_media_type_extras() -> Optional[dict]``: if present and returns a
+      non-empty ``dict``, it **takes precedence** over ``openapi_json_extras``.
+    
     Example:
         ```python
         class MyError:

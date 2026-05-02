@@ -69,6 +69,40 @@ class TestBaseErrorDTO:
         assert "Item not found" in examples
         assert examples["Item not found"]["value"] == {"detail": "Item not found"}
 
+    def test_base_error_dto_openapi_json_extras_schema(self):
+        """Schema beside examples via openapi_json_extras."""
+        adr_schema = {
+            "type": "object",
+            "required": ["code", "detail"],
+            "properties": {
+                "code": {"type": "string"},
+                "detail": {"type": "string"},
+                "context": {"type": "object"},
+            },
+        }
+        error = BaseErrorDTO(
+            status_code=409,
+            message="Conflict",
+            openapi_json_extras={"schema": adr_schema},
+        )
+        merged = Errors(error, validation_error=False)
+        aj = merged[409]["content"]["application/json"]
+        assert aj["schema"] == adr_schema
+        assert "Conflict" in aj["examples"]
+
+    def test_standard_error_dto_openapi_json_extras(self):
+        adr_schema = {"$ref": "#/components/schemas/AppError"}
+        error = StandardErrorDTO(
+            status_code=422,
+            message="Bad",
+            examples={"One": "msg"},
+            openapi_json_extras={"schema": adr_schema},
+        )
+        merged = Errors(error, validation_error=False)
+        aj = merged[422]["content"]["application/json"]
+        assert aj["schema"] == adr_schema
+        assert "One" in aj["examples"]
+
 
 @pytest.mark.unit
 class TestStandardErrorDTO:

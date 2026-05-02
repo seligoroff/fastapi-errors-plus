@@ -4,12 +4,12 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-72%20passed-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
-[![Coverage](https://img.shields.io/badge/coverage-83%25-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-101-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Universal library for documenting errors in FastAPI endpoints.
 
-> [Русская версия README](README.ru.md)
+> [Русская версия README](https://github.com/seligoroff/fastapi-errors-plus/blob/main/README.ru.md)
 
 ## Philosophy
 
@@ -181,6 +181,39 @@ def delete_item(id: int):
     pass
 ```
 
+#### OpenAPI extras (`schema`) next to examples
+
+ADR-style payloads (`code`, `detail`, optional `context`) need a **`schema`** in the spec besides **`examples`**. On **`BaseErrorDTO`** / **`StandardErrorDTO`** use **`openapi_json_extras`** (a dict merged under `content["application/json"]` — omit `example` / `examples` there; **`to_example()`** still defines examples):
+
+```python
+from fastapi import APIRouter, status
+from fastapi_errors_plus import BaseErrorDTO, Errors
+
+ADR_ERROR_BODY_SCHEMA = {
+    "type": "object",
+    "required": ["code", "detail"],
+    "properties": {
+        "code": {"type": "string"},
+        "detail": {"type": "string"},
+        "context": {"type": "object"},
+    },
+}
+
+business_conflict = BaseErrorDTO(
+    status_code=status.HTTP_409_CONFLICT,
+    message="BusinessRuleViolation",
+    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
+)
+
+router = APIRouter()
+
+@router.post("/items", responses=Errors(business_conflict, validation_error=False))
+def create_item():
+    ...
+```
+
+Custom **`ErrorDTO`** classes may instead define **`to_openapi_json_media_type_extras()`** returning a **`dict`**; if present and non-empty, it overrides **`openapi_json_extras`**. Any later **`dict`** in **`Errors`** for that status still overrides the same **`application/json`** keys (same precedence as merging two dicts).
+
 #### StandardErrorDTO
 
 Extended implementation for errors with multiple examples (useful for standard HTTP errors):
@@ -270,6 +303,37 @@ def update_item(id: int):
 ```
 
 The OpenAPI spec will contain both examples under the 404 status code.
+
+When merging the same status code: a **dict** wins for **`description`** over the bundled standard-flag wording; an **ErrorDTO**’s `message` can replace the description only while it still matches the library’s default label for that code (custom descriptions coming from dicts are not overwritten by DTOs).
+
+Under `content["application/json"]`, `example` / `examples` are merged as before; any **other** OpenAPI Media Type fields from a later **`dict`** (for example **`schema`**, **`encoding`**) are **copied in** as well—the later dict wins on conflict (**same rule as `description`**).  
+
+You can combine one **`ErrorDTO`** (examples) with a **`dict`** for the **same numeric status code** listing only **`schema`** (or other non-example keys) without repeating the boilerplate examples block:
+
+```python
+Errors(
+    conflict_error_doc,   # implements ErrorDTO, e.g. .for_openapi() for ADR-shaped examples
+    {
+        status.HTTP_409_CONFLICT: {
+            "description": "Business rule violation",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "code": {"type": "string"},
+                            "detail": {"type": "string"},
+                            "context": {"type": "object"},
+                        },
+                    },
+                },
+            },
+        },
+    },
+)
+```
+
+Order matters only for overlaps: whichever **`dict`** is applied **later** in the **`Errors`** argument list overwrites **`schema`** / **`encoding`** (and **`model`** on the outer response dict, if provided) when the same keys appear again.
 
 ## ErrorDTO Protocol
 
@@ -542,14 +606,15 @@ Errors(
 FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant in 95%+ of endpoints. For endpoints without parameters, explicitly set `validation_error=False` or `validation_error_422=False`.
 
 **Returns:**
-- Mapping object (dict-like) that implements `Dict[int, Dict[str, Any]]` for FastAPI responses
-- Can be used directly in `responses` parameter without calling: `responses=Errors(...)`
+- A dict-like `Mapping[int, …]` suitable for FastAPI’s `responses` / OpenAPI
+- Pass the instance as-is — **do not** call it like a function: `responses=Errors(...)`
 
 #### Usage
 
 ```python
-# Call the instance to get responses dict
-responses = Errors(unauthorized=True)
+# Instances are Mapping keyed by HTTP status codes
+error_responses = Errors(unauthorized_401=True, forbidden_403=True)
+documented = error_responses[401]  # response block picked up by OpenAPI
 ```
 
 ### `ErrorDTO`
@@ -563,6 +628,8 @@ Protocol for error objects compatible with the library.
 **Required methods:**
 - `to_example() -> Dict[str, Any]` — Generate example for OpenAPI
 
+During `Errors(...)` initialization, non-`dict` objects in `*errors` missing `status_code`, `message`, or a callable `to_example` raise **`TypeError`** naming what was missing.
+
 ### `BaseErrorDTO`
 
 Base implementation of ErrorDTO Protocol for convenience.
@@ -572,6 +639,7 @@ Base implementation of ErrorDTO Protocol for convenience.
 BaseErrorDTO(
     status_code: int,
     message: str,
+    openapi_json_extras: Optional[Dict[str, Any]] = None,
 )
 ```
 
@@ -589,6 +657,7 @@ Extended implementation for errors with multiple examples.
 StandardErrorDTO(
     status_code: int,
     message: str,
+    openapi_json_extras: Optional[Dict[str, Any]] = None,
     examples: Optional[Dict[str, str]] = None,
 )
 ```
@@ -640,7 +709,7 @@ def delete_item(id: int):
 ```python
 from fastapi import APIRouter
 from fastapi_errors_plus import Errors
-from api.exceptions.dto import errors  # Your project's error DTOs
+from api.exceptions.dto import notification_not_found_error  # ErrorDTO-compatible instance
 
 router = APIRouter()
 
@@ -649,7 +718,7 @@ router = APIRouter()
     responses=Errors(
         unauthorized=True,
         forbidden=True,
-        errors.notification_not_found_error,  # Your ErrorDTO
+        notification_not_found_error,
     ),
 )
 async def delete_notification(notification_id: int):
@@ -688,40 +757,32 @@ This example shows how to use `fastapi-errors-plus` in a FastAPI project with Cl
 
 **Domain Layer** (`domain/errors.py`):
 ```python
-from typing import Protocol, Dict, Any
+from typing import Dict, Any
 
-class DomainError(Protocol):
-    """Domain error protocol compatible with ErrorDTO."""
+class DomainException(Exception):
+    """Domain exception usable as runtime error and shaped like ErrorDTO for OpenAPI."""
     status_code: int
     message: str
-    
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI."""
-        ...
 
-class ItemNotFoundError:
-    """Domain error for item not found."""
+    def __init__(self) -> None:
+        super().__init__(self.message)
+
+    def to_example(self) -> Dict[str, Any]:
+        return {
+            self.message: {
+                "value": {"detail": self.message},
+            },
+        }
+
+
+class ItemNotFoundError(DomainException):
     status_code = 404
     message = "Item not found"
-    
-    def to_example(self) -> Dict[str, Any]:
-        return {
-            "ItemNotFound": {
-                "value": {"detail": "Item not found"},
-            },
-        }
 
-class ItemAlreadyExistsError:
-    """Domain error for item already exists."""
+
+class ItemAlreadyExistsError(DomainException):
     status_code = 409
     message = "Item already exists"
-    
-    def to_example(self) -> Dict[str, Any]:
-        return {
-            "ItemAlreadyExists": {
-                "value": {"detail": "Item already exists"},
-            },
-        }
 ```
 
 **Application Layer** (`application/use_cases.py`):

@@ -7,6 +7,43 @@ from fastapi import status
 
 from fastapi_errors_plus.protocol import ErrorDTO
 
+# Starlette (via FastAPI) prefers HTTP_422_UNPROCESSABLE_CONTENT over ENTITY.
+# Older pins may lack CONTENT (import crash); avoid nested getattr(, default=)
+# touching ENTITY when CONTENT exists (DeprecationWarning).
+_HTTP_422 = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", None)
+if _HTTP_422 is None:
+    _HTTP_422 = getattr(status, "HTTP_422_UNPROCESSABLE_ENTITY", 422)
+
+# OpenAPI Media Type: merge example/examples separately; other keys (schema, encoding, …) from an extra dict win.
+_OPENAPI_MEDIA_TYPE_EXAMPLE_KEYS = frozenset({"example", "examples"})
+
+
+def _merge_openapi_application_json_non_example(
+    existing_json: Dict[str, Any],
+    response_json: Dict[str, Any],
+) -> None:
+    """Apply schema/encoding/extra fields from incoming media type; incoming overwrites on conflict."""
+    for key, value in response_json.items():
+        if key not in _OPENAPI_MEDIA_TYPE_EXAMPLE_KEYS:
+            existing_json[key] = value
+
+
+def _pick_error_dto_application_json_extra(error_dto: Any) -> Optional[Dict[str, Any]]:
+    """Optional OpenAPI ``application/json`` keys from DTO (e.g. ``schema``, ``encoding``).
+
+    Prefer ``to_openapi_json_media_type_extras()`` when present and returns a truthy mapping;
+    otherwise ``openapi_json_extras`` attribute. Must not rely on ``example`` / ``examples`` here —
+    ``to_example()`` covers those."""
+    getter = getattr(error_dto, "to_openapi_json_media_type_extras", None)
+    if callable(getter):
+        out = getter()
+        if isinstance(out, dict) and out:
+            return dict(out)
+    extra = getattr(error_dto, "openapi_json_extras", None)
+    if isinstance(extra, dict) and extra:
+        return dict(extra)
+    return None
+
 
 class Errors(Mapping):
     """Universal class for documenting errors in FastAPI endpoints.
@@ -140,7 +177,7 @@ class Errors(Mapping):
         
         if add_422:
             self._add_standard_error(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                _HTTP_422,
                 "Validation Error",
                 {"detail": "Validation error"},
             )
@@ -239,7 +276,7 @@ class Errors(Mapping):
     STANDARD_DESCRIPTIONS = {
         status.HTTP_401_UNAUTHORIZED: "Unauthorized",
         status.HTTP_403_FORBIDDEN: "Forbidden",
-        status.HTTP_422_UNPROCESSABLE_CONTENT: "Validation Error",
+        _HTTP_422: "Validation Error",
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
     
@@ -263,7 +300,7 @@ class Errors(Mapping):
         standard_keys = {
             status.HTTP_401_UNAUTHORIZED: "StandardUnauthorized",
             status.HTTP_403_FORBIDDEN: "StandardForbidden",
-            status.HTTP_422_UNPROCESSABLE_CONTENT: "StandardValidationError",
+            _HTTP_422: "StandardValidationError",
             status.HTTP_500_INTERNAL_SERVER_ERROR: "StandardInternalServerError",
         }
         example_key = standard_keys.get(status_code, f"Standard{status_code}")
@@ -322,6 +359,10 @@ class Errors(Mapping):
                 if "description" in response_data:
                     existing["description"] = response_data["description"]
                 
+                # FastAPI-style shorthand on the response object (incoming dict wins)
+                if "model" in response_data:
+                    existing["model"] = response_data["model"]
+                
                 # Merge content
                 if "content" in response_data:
                     existing_content = existing.setdefault("content", {})
@@ -331,6 +372,8 @@ class Errors(Mapping):
                     if "application/json" in response_content:
                         existing_json = existing_content.setdefault("application/json", {})
                         response_json = response_content["application/json"]
+                        
+                        _merge_openapi_application_json_non_example(existing_json, response_json)
                         
                         # Handle example/examples
                         if "examples" in response_json:
@@ -400,14 +443,16 @@ class Errors(Mapping):
         """
         status_code = error_dto.status_code
         examples = error_dto.to_example()
-        
+        dto_extras = _pick_error_dto_application_json_extra(error_dto)
+
         if status_code not in self._responses:
+            application_json: Dict[str, Any] = {"examples": examples}
+            if dto_extras is not None:
+                _merge_openapi_application_json_non_example(application_json, dto_extras)
             self._responses[status_code] = {
                 "description": error_dto.message,
                 "content": {
-                    "application/json": {
-                        "examples": examples,
-                    },
+                    "application/json": application_json,
                 },
             }
         else:
@@ -446,7 +491,10 @@ class Errors(Mapping):
             # Merge new examples from ErrorDTO
             existing_examples.update(examples)
             content_json["examples"] = existing_examples
-    
+            
+            if dto_extras is not None:
+                _merge_openapi_application_json_non_example(content_json, dto_extras)
+
     # Mapping protocol implementation
     def __getitem__(self, key: int) -> Dict[str, Any]:
         """Get response for status code.
