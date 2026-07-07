@@ -39,6 +39,12 @@ class ErrorDoc:
     examples: Optional[Dict[str, ExampleSpec]] = None
     body: Optional[Dict[str, Any]] = None
     example_key: Optional[str] = None
+    model: Any = field(default=None, repr=False)
+    """Optional Pydantic model for FastAPI ``responses`` (outer ``model=`` key)."""
+
+    schema: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    """Optional JSON Schema under ``content['application/json']['schema']``."""
+
     openapi_json_extras: Optional[Dict[str, Any]] = field(default=None)
 
     def to_examples(self) -> Dict[str, Any]:

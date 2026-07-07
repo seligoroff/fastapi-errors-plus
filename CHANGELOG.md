@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-07-07
+
+Semver: **minor** — `ErrorProfile`, first-class `model`/`schema` on DTOs, merge refactor, protocol validation, deprecation wave for legacy API.
+
+### Added
+
+- **`ErrorProfile`:** frozen project-wide defaults (`unauthorized_401`, `validation_error_422`, …) via `Errors(..., profile=ADR)`; explicit kwargs override profile.
+- **`model` and `schema` on DTOs:** `BaseErrorDTO`, `StandardErrorDTO`, and `ErrorDoc` accept optional `model=` (outer FastAPI response key) and `schema=` (under `application/json`) without an extra status `dict`.
+- **`fastapi_errors_plus.merge_utils`:** shared `example` → `examples` promotion and merge helpers.
+
+### Fixed
+
+- **Standard-flag example keys:** track flag-origin example keys internally (`_flag_example_keys`) instead of guessing from `detail` strings when merging (issue #12).
+- **DTO validation:** `isinstance(..., ErrorDTO | LegacyErrorDTO)` with callable checks; clearer `TypeError` for non-callable legacy methods (issue #13).
+
+### Changed
+
+- **Example merge paths** in `Errors` use `merge_utils` (single promotion/merge implementation).
+- **`_pick_error_dto_application_json_extra`:** merges `schema` field with `openapi_json_extras` / `to_openapi_json_media_type_extras()`.
+
+### Deprecated
+
+- Legacy kwargs `unauthorized`, `forbidden`, `validation_error`, `internal_server_error` — use `*_401` / `*_403` / `*_422` / `*_500` names (removal in **1.0**).
+- Implicit `validation_error_422=True` when neither `validation_error` nor `validation_error_422` is passed — emits `DeprecationWarning`; default will become **`False` in 1.0**. Pass `validation_error_422=False` explicitly to silence.
+
+---
+
 ## [0.8.0] - 2026-07-07
 
 Semver: **minor** — response isolation fixes, `ErrorDoc`, `to_examples()` API, protocol split for legacy migration.

@@ -41,6 +41,12 @@ class BaseErrorDTO:
     message: str
     """Error message description."""
 
+    model: Any = field(default=None, repr=False)
+    """Optional Pydantic model for FastAPI ``responses`` (outer ``model=`` key)."""
+
+    schema: Optional[Dict[str, Any]] = field(default=None, repr=False)
+    """Optional JSON Schema under ``content['application/json']['schema']``."""
+
     openapi_json_extras: Optional[Dict[str, Any]] = field(default=None)
     """Optional OpenAPI fragment under ``content['application/json']`` besides examples,
     typically ``{\"schema\": ...}`` or ``encoding``. Do **not** put ``example`` / ``examples``

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastapi-errors-plus"
-version = "0.8.0"
+version = "0.9.0"
 description = "Universal library for documenting errors in FastAPI endpoints"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -60,6 +60,9 @@ addopts = [
     "--cov-branch",
     "--cov-fail-under=80",
     "-v",
+]
+filterwarnings = [
+    "ignore:Implicit validation_error_422=True is deprecated:DeprecationWarning",
 ]
 
 [tool.coverage.run]

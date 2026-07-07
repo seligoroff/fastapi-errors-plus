@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-117-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-138-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Универсальная библиотека для документирования ошибок в эндпоинтах FastAPI.
@@ -79,19 +79,19 @@ def delete_item(id: int):
 - `validation_error_422=True` → 422 Unprocessable Entity (по умолчанию `True`)
 - `internal_server_error_500=True` → 500 Internal Server Error
 
-**Устаревшие (для обратной совместимости):**
+**Устаревшие (deprecated в 0.9, удаление в 1.0):**
 - `unauthorized=True` → 401 Unauthorized
 - `forbidden=True` → 403 Forbidden
-- `validation_error=True` → 422 Unprocessable Entity (по умолчанию `True`)
+- `validation_error=True` → 422 Unprocessable Entity
 - `internal_server_error=True` → 500 Internal Server Error
 
 ```python
 @router.get(
     "/protected",
     responses=Errors(
-        unauthorized_401=True,  # Явно: 401 виден
-        forbidden_403=True,      # Явно: 403 виден
-        # validation_error_422=True - не нужно указывать, по умолчанию True
+        unauthorized_401=True,
+        forbidden_403=True,
+        validation_error_422=False,
     ),
 )
 def get_protected():
@@ -99,9 +99,9 @@ def get_protected():
     pass
 ```
 
-**Почему явные флаги?** Новые флаги со статус-кодами (`_401`, `_403` и т.д.) делают сразу понятным, какой HTTP статус-код соответствует каждому флагу, улучшая читаемость кода без необходимости помнить соответствие.
+**Почему явные флаги?** Новые флаги со статус-кодами (`_401`, `_403` и т.д.) делают сразу понятным, какой HTTP статус-код соответствует каждому флагу.
 
-**Почему `validation_error=True` по умолчанию?** FastAPI автоматически валидирует все параметры (Path, Query, Body), поэтому 422 актуален в 95%+ эндпоинтов. Для эндпоинтов без параметров явно установите `validation_error=False` или `validation_error_422=False`.
+**Про 422:** если не передавать ни `validation_error`, ни `validation_error_422`, библиотека пока добавляет **422**, но выдаёт **`DeprecationWarning`** — в **1.0** дефолт станет **`False`**. Для ADR-API явно укажите `validation_error_422=False` или используйте **`ErrorProfile`** ниже.
 
 ### 2. Ошибки через dict
 
@@ -289,6 +289,42 @@ def delete_item(id: int):
 ```
 
 **Обычный dict** в значении примера трактуется как полное **тело** ответа, если только он не похож на OpenAPI Example Object (ключи только из `value`, `summary`, `description`, `externalValue`).
+
+Опциональные **`model=`** (Pydantic-модель на внешнем уровне ответа) и **`schema=`** (JSON Schema в `application/json`) избавляют от отдельного status-`dict`:
+
+```python
+conflict = ErrorDoc(
+    status_code=409,
+    message="BusinessRule",
+    model=ApplicationJsonError,
+    schema=ADR_ERROR_BODY_SCHEMA,
+    body={"code": "RULE_VIOLATION", "detail": "Item exists"},
+)
+
+@router.post("/items", responses=Errors(conflict, validation_error_422=False))
+def create_item():
+    ...
+```
+
+#### ErrorProfile
+
+Общие настройки проекта (frozen — не мутируется вызовами эндпоинтов):
+
+```python
+from fastapi_errors_plus import ErrorDoc, ErrorProfile, Errors
+
+ADR = ErrorProfile(
+    validation_error_422=False,
+    unauthorized_401=True,
+    internal_server_error_500=True,
+)
+
+@router.post("/items", responses=Errors(business_conflict, profile=ADR))
+def create_item():
+    ...
+```
+
+Явные keyword-флаги `Errors` перекрывают значения профиля.
 
 ### 5. Смешанное использование
 
@@ -619,6 +655,7 @@ Errors(
     forbidden_403: bool = False,
     validation_error_422: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
     internal_server_error_500: bool = False,
+    profile: Optional[ErrorProfile] = None,
 )
 ```
 
@@ -637,10 +674,10 @@ Errors(
   - `None` (по умолчанию): Добавить 422 (True по умолчанию, FastAPI валидирует все параметры)
   - `False`: Явно отключить 422
   - `True`: Явно включить 422
-- `internal_server_error`: Добавить ошибку 500 Internal Server Error (устаревший, для обратной совместимости). По умолчанию `False`.
+- `internal_server_error`: Добавить ошибку 500 (устаревший, **deprecated** в 0.9). По умолчанию `False`.
+- `profile`: Опциональный **`ErrorProfile`** — дефолты проекта; явные kwargs перекрывают профиль.
 
-**Почему `validation_error=True` по умолчанию?**
-FastAPI автоматически валидирует все параметры (Path, Query, Body), поэтому 422 актуален в 95%+ эндпоинтов. Для эндпоинтов без параметров явно установите `validation_error=False` или `validation_error_422=False`.
+**Deprecation (0.9+):** устаревшие kwargs выше дают `DeprecationWarning` (удаление в **1.0**). Без явного `validation_error_422` 422 пока добавляется с предупреждением; в **1.0** дефолт станет **`False`**.
 
 **Возвращает:**
 - Объект вроде словаря (`Mapping[int, …]`), пригодный для поля `responses` FastAPI / OpenAPI
@@ -688,11 +725,26 @@ ErrorDoc(
     examples: Optional[Dict[str, str | dict]] = None,
     body: Optional[Dict[str, Any]] = None,
     example_key: Optional[str] = None,
+    model: Any = None,
+    schema: Optional[Dict[str, Any]] = None,
     openapi_json_extras: Optional[Dict[str, Any]] = None,
 )
 ```
 
 Если **`examples`** не задан, один пример строится из **`body`** или `{"detail": message}`.
+
+### `ErrorProfile`
+
+Frozen-дефолты для стандартных HTTP-флагов.
+
+```python
+ErrorProfile(
+    unauthorized_401: bool = False,
+    forbidden_403: bool = False,
+    validation_error_422: Optional[bool] = None,
+    internal_server_error_500: bool = False,
+)
+```
 
 ### `BaseErrorDTO`
 
@@ -703,6 +755,8 @@ ErrorDoc(
 BaseErrorDTO(
     status_code: int,
     message: str,
+    model: Any = None,
+    schema: Optional[Dict[str, Any]] = None,
     openapi_json_extras: Optional[Dict[str, Any]] = None,
 )
 ```

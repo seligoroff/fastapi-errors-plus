@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-117-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-138-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Universal library for documenting errors in FastAPI endpoints.
@@ -79,13 +79,13 @@ Use boolean flags for common HTTP status codes:
 - `validation_error_422=True` → 422 Unprocessable Entity (defaults to `True`)
 - `internal_server_error_500=True` → 500 Internal Server Error
 
-**Legacy (for backward compatibility):**
+**Legacy (deprecated in 0.9, removal in 1.0):**
 - `unauthorized=True` → 401 Unauthorized
 - `forbidden=True` → 403 Forbidden
-- `validation_error=True` → 422 Unprocessable Entity (defaults to `True`)
+- `validation_error=True` → 422 Unprocessable Entity
 - `internal_server_error=True` → 500 Internal Server Error
 
-**Note:** `validation_error` and `validation_error_422` default to `True` because FastAPI automatically validates all parameters (Path, Query, Body), making 422 relevant in 95%+ of endpoints. Set to `False` only for endpoints without parameters.
+**Note on 422:** If you omit both `validation_error` and `validation_error_422`, the library still adds **422** today but emits a **`DeprecationWarning`** — the default will become **`False` in 1.0**. For ADR-style APIs, set `validation_error_422=False` explicitly (or use **`ErrorProfile`** below).
 
 ```python
 @router.get(
@@ -288,6 +288,44 @@ def delete_item(id: int):
 ```
 
 A **plain dict** as an example value is treated as the full response **body** unless it looks like an OpenAPI Example Object (keys only among `value`, `summary`, `description`, `externalValue`).
+
+Optional **`model=`** (Pydantic model on the outer response object for FastAPI `$ref` registration) and **`schema=`** (JSON Schema under `application/json`) avoid a separate status `dict` for typed error bodies:
+
+```python
+from fastapi_errors_plus import ErrorDoc, Errors
+
+conflict = ErrorDoc(
+    status_code=409,
+    message="BusinessRule",
+    model=ApplicationJsonError,  # optional Pydantic model
+    schema=ADR_ERROR_BODY_SCHEMA,  # or raw JSON Schema
+    body={"code": "RULE_VIOLATION", "detail": "Item exists"},
+)
+
+@router.post("/items", responses=Errors(conflict, validation_error_422=False))
+def create_item():
+    ...
+```
+
+#### ErrorProfile
+
+Project-wide defaults (frozen — not mutated by endpoint calls):
+
+```python
+from fastapi_errors_plus import ErrorDoc, ErrorProfile, Errors
+
+ADR = ErrorProfile(
+    validation_error_422=False,
+    unauthorized_401=True,
+    internal_server_error_500=True,
+)
+
+@router.post("/items", responses=Errors(business_conflict, profile=ADR))
+def create_item():
+    ...
+```
+
+Explicit `Errors` keyword flags override profile values. Positional dict/DTO errors are merged after profile-driven standard statuses.
 
 ### 5. Mixed Usage
 
@@ -616,6 +654,7 @@ Errors(
     forbidden_403: bool = False,
     validation_error_422: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
     internal_server_error_500: bool = False,
+    profile: Optional[ErrorProfile] = None,
 )
 ```
 
@@ -634,10 +673,12 @@ Errors(
   - `None` (default): Add 422 (True by default, FastAPI validates all parameters)
   - `False`: Explicitly disable 422
   - `True`: Explicitly enable 422
-- `internal_server_error`: Add 500 Internal Server Error (legacy, for backward compatibility). Defaults to `False`.
+- `internal_server_error`: Add 500 Internal Server Error (legacy, **deprecated** in 0.9). Defaults to `False`.
+- `profile`: Optional **`ErrorProfile`** — project defaults; explicit kwargs override profile.
 
-**Why `validation_error=True` by default?**
-FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant in 95%+ of endpoints. For endpoints without parameters, explicitly set `validation_error=False` or `validation_error_422=False`.
+**Deprecation (0.9+):** legacy kwargs above emit `DeprecationWarning` (removal in **1.0**). Omitting both `validation_error` and `validation_error_422` still adds 422 but warns; default becomes **`False` in 1.0**.
+
+**422 behaviour:** pass `validation_error_422=False` for endpoints without request-body validation or ADR-style error bodies. Use **`ErrorProfile`** to set this once per project.
 
 **Returns:**
 - A dict-like `Mapping[int, …]` suitable for FastAPI’s `responses` / OpenAPI
@@ -685,11 +726,26 @@ ErrorDoc(
     examples: Optional[Dict[str, str | dict]] = None,
     body: Optional[Dict[str, Any]] = None,
     example_key: Optional[str] = None,
+    model: Any = None,
+    schema: Optional[Dict[str, Any]] = None,
     openapi_json_extras: Optional[Dict[str, Any]] = None,
 )
 ```
 
 When **`examples`** is omitted, a single example is built from **`body`** or `{"detail": message}`.
+
+### `ErrorProfile`
+
+Frozen project-wide defaults for standard HTTP flags.
+
+```python
+ErrorProfile(
+    unauthorized_401: bool = False,
+    forbidden_403: bool = False,
+    validation_error_422: Optional[bool] = None,
+    internal_server_error_500: bool = False,
+)
+```
 
 ### `BaseErrorDTO`
 
@@ -700,6 +756,8 @@ Base implementation of ErrorDTO Protocol for convenience.
 BaseErrorDTO(
     status_code: int,
     message: str,
+    model: Any = None,
+    schema: Optional[Dict[str, Any]] = None,
     openapi_json_extras: Optional[Dict[str, Any]] = None,
 )
 ```

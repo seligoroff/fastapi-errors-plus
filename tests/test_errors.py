@@ -676,15 +676,10 @@ class TestUniqueKeys:
             unauthorized_401=True,  # Named after positional - should use unique key
         )
 
-        # Should have both examples
+        # Flag runs before positional dict: flag example becomes "default", dict keeps StandardUnauthorized
         examples = errors[401]["content"]["application/json"]["examples"]
-        # When dict is added first with "StandardUnauthorized", then flag is added
-        # Flag creates "example" which gets converted to "default" (not "StandardUnauthorized_2")
-        # This is because flag creates "example" first, then it's converted
-        assert "StandardUnauthorized" in examples  # From dict
-        assert "default" in examples  # From flag (converted from example)
-
-        # Both examples should be present
+        assert "StandardUnauthorized" in examples
+        assert "default" in examples
         assert len(examples) == 2
         assert examples["StandardUnauthorized"]["value"]["detail"] == "Custom"
         assert examples["default"]["value"]["detail"] == "Unauthorized"

@@ -8,7 +8,14 @@ from typing import Any, Dict, Iterator, Optional, Union
 
 from fastapi import status
 
-from fastapi_errors_plus.protocol import ErrorDTO
+from fastapi_errors_plus.error_profile import ErrorProfile
+from fastapi_errors_plus.merge_utils import (
+    ensure_examples_dict,
+    merge_examples_map,
+    merge_singular_example,
+    standard_flag_example_key,
+)
+from fastapi_errors_plus.protocol import ErrorDTO, LegacyErrorDTO
 
 # Starlette (via FastAPI) prefers HTTP_422_UNPROCESSABLE_CONTENT over ENTITY.
 # Older pins may lack CONTENT (import crash); avoid nested getattr(, default=)
@@ -38,17 +45,26 @@ def _pick_error_dto_application_json_extra(error_dto: Any) -> Optional[Dict[str,
     """Optional OpenAPI ``application/json`` keys from DTO (e.g. ``schema``, ``encoding``).
 
     Prefer ``to_openapi_json_media_type_extras()`` when present and returns a truthy mapping;
-    otherwise ``openapi_json_extras`` attribute. Must not rely on ``example`` / ``examples`` here —
-    ``to_example()`` covers those."""
+    otherwise ``schema`` field, then ``openapi_json_extras``. Must not rely on ``example`` /
+    ``examples`` here — ``to_examples()`` covers those."""
+    extras: Dict[str, Any] = {}
+    schema = getattr(error_dto, "schema", None)
+    if isinstance(schema, dict) and schema:
+        extras["schema"] = schema
+    attr_extra = getattr(error_dto, "openapi_json_extras", None)
+    if isinstance(attr_extra, dict) and attr_extra:
+        extras.update(attr_extra)
     getter = getattr(error_dto, "to_openapi_json_media_type_extras", None)
     if callable(getter):
         out = getter()
         if isinstance(out, dict) and out:
-            return dict(out)
-    extra = getattr(error_dto, "openapi_json_extras", None)
-    if isinstance(extra, dict) and extra:
-        return dict(extra)
-    return None
+            extras.update(out)
+    return extras or None
+
+
+def _pick_error_dto_model(error_dto: Any) -> Any:
+    """Optional FastAPI ``model`` on the outer response object."""
+    return getattr(error_dto, "model", None)
 
 
 def _example_defining_class(cls: type, method: str) -> Optional[type]:
@@ -174,6 +190,7 @@ class Errors(Mapping):
             bool
         ] = None,  # 422 (explicit, None = use default True, False = disable, True = enable)
         internal_server_error_500: bool = False,  # 500 (explicit)
+        profile: Optional[ErrorProfile] = None,
     ) -> None:
         """Initialize Errors instance.
 
@@ -224,31 +241,76 @@ class Errors(Mapping):
             ```
         """
         self._responses: Dict[int, Dict[str, Any]] = {}
+        self._flag_example_keys: Dict[int, str] = {}
+
+        if unauthorized:
+            warnings.warn(
+                "unauthorized is deprecated; use unauthorized_401 instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if forbidden:
+            warnings.warn(
+                "forbidden is deprecated; use forbidden_403 instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if validation_error is not None:
+            warnings.warn(
+                "validation_error is deprecated; use validation_error_422 instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        if internal_server_error:
+            warnings.warn(
+                "internal_server_error is deprecated; use internal_server_error_500 instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+
+        use_unauthorized = unauthorized_401 or unauthorized
+        use_forbidden = forbidden_403 or forbidden
+        use_internal = internal_server_error_500 or internal_server_error
+        val_422 = (
+            validation_error_422
+            if validation_error_422 is not None
+            else validation_error
+        )
+
+        if profile is not None:
+            if not use_unauthorized:
+                use_unauthorized = profile.unauthorized_401
+            if not use_forbidden:
+                use_forbidden = profile.forbidden_403
+            if not use_internal:
+                use_internal = profile.internal_server_error_500
+            if val_422 is None:
+                val_422 = profile.validation_error_422
 
         # Add standard errors
-        # New parameters with explicit codes have priority, but old ones still work
-        if unauthorized_401 or unauthorized:
+        if use_unauthorized:
             self._add_standard_error(
                 status.HTTP_401_UNAUTHORIZED,
                 "Unauthorized",
                 {"detail": "Unauthorized"},
             )
-        if forbidden_403 or forbidden:
+        if use_forbidden:
             self._add_standard_error(
                 status.HTTP_403_FORBIDDEN,
                 "Forbidden",
                 {"detail": "Forbidden"},
             )
-        # For validation_error: True by default (FastAPI validates all parameters)
-        # Add 422 unless at least one parameter is explicitly False
-        # If user sets validation_error=False, they want to disable 422 (even if validation_error_422 defaults to True)
-        # If user sets validation_error_422=False, they want to disable 422 (even if validation_error defaults to True)
-        # Only if both are explicitly False, we definitely don't add
-        # If at least one is True (or None which defaults to True) and neither is explicitly False, add
-        add_422 = True  # Default is True
-        if validation_error is False or validation_error_422 is False:
-            # At least one is explicitly False - don't add
+        add_422 = True
+        if val_422 is False:
             add_422 = False
+        elif val_422 is None:
+            add_422 = True
+            warnings.warn(
+                "Implicit validation_error_422=True is deprecated and will default to "
+                "False in 1.0. Pass validation_error_422=False explicitly to silence.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
         if add_422:
             self._add_standard_error(
@@ -256,7 +318,7 @@ class Errors(Mapping):
                 "Validation Error",
                 {"detail": "Validation error"},
             )
-        if internal_server_error_500 or internal_server_error:
+        if use_internal:
             self._add_standard_error(
                 status.HTTP_500_INTERNAL_SERVER_ERROR,
                 "Internal Server Error",
@@ -277,37 +339,16 @@ class Errors(Mapping):
         _ensure_response_descriptions(self._responses)
 
     def _validate_error_dto(self, error: Any) -> None:
-        """Validate that error object implements ErrorDTO protocol.
-
-        Args:
-            error: Object to validate
-
-        Raises:
-            TypeError: If object doesn't implement ErrorDTO protocol
-
-        Example:
-            ```python
-            # Valid object
-            class MyError:
-                status_code = 404
-                message = "Not found"
-                def to_example(self): ...
-
-            errors = Errors()
-            errors._validate_error_dto(MyError())  # OK
-
-            # Invalid object
-            class BadError:
-                status_code = 404
-                # Missing message and to_example
-
-            errors._validate_error_dto(BadError())  # Raises TypeError
-            ```
-        """
-        required_attrs = ("status_code", "message")
+        """Validate that error object implements ErrorDTO or LegacyErrorDTO protocol."""
         has_to_examples = callable(getattr(error, "to_examples", None))
         has_to_example = callable(getattr(error, "to_example", None))
 
+        if isinstance(error, ErrorDTO) and has_to_examples:
+            return
+        if isinstance(error, LegacyErrorDTO) and has_to_example:
+            return
+
+        required_attrs = ("status_code", "message")
         missing_attrs = [attr for attr in required_attrs if not hasattr(error, attr)]
         if not has_to_examples and not has_to_example:
             missing_methods = ["to_examples or to_example"]
@@ -355,6 +396,10 @@ class Errors(Mapping):
         status.HTTP_500_INTERNAL_SERVER_ERROR: "Internal Server Error",
     }
 
+    def _prior_singular_example_key(self, status_code: int) -> Optional[str]:
+        """Example-map key for a singular ``example`` from a standard flag, if any."""
+        return self._flag_example_keys.get(status_code)
+
     def _add_standard_error(
         self,
         status_code: int,
@@ -365,22 +410,11 @@ class Errors(Mapping):
 
         If the status code already exists, merges the example with existing examples
         using a unique key instead of overwriting.
-
-        Args:
-            status_code: HTTP status code (e.g., 401, 403, 422, 500)
-            description: Error description for OpenAPI
-            example: Example response body (e.g., {"detail": "Unauthorized"})
         """
-        # Generate unique key for standard example
-        standard_keys = {
-            status.HTTP_401_UNAUTHORIZED: "StandardUnauthorized",
-            status.HTTP_403_FORBIDDEN: "StandardForbidden",
-            _HTTP_422: "StandardValidationError",
-            status.HTTP_500_INTERNAL_SERVER_ERROR: "StandardInternalServerError",
-        }
-        example_key = standard_keys.get(status_code, f"Standard{status_code}")
+        example_key = standard_flag_example_key(status_code)
 
         if status_code not in self._responses:
+            self._flag_example_keys[status_code] = example_key
             self._responses[status_code] = {
                 "description": description,
                 "content": {
@@ -390,29 +424,13 @@ class Errors(Mapping):
                 },
             }
         else:
-            # If already exists, add to examples without overwriting
-            # Safely access content/application/json with defaults
             existing = self._responses[status_code]
             existing_content = existing.setdefault("content", {})
             content = existing_content.setdefault("application/json", {})
-
-            # Convert example to examples if needed
-            if "examples" not in content:
-                if "example" in content:
-                    existing_example = content.pop("example")
-                    content["examples"] = {
-                        "default": {"value": existing_example},
-                    }
-                else:
-                    content["examples"] = {}
-
-            # Add new example with unique key (don't overwrite existing!)
-            # Check if example_key already exists in examples, use unique key if needed
-            unique_key = self._unique_key(content["examples"], example_key)
-            content["examples"][unique_key] = {"value": example}
-
-            # Don't overwrite description if it already exists
-            # Priority: dict > DTO > standard flags
+            prior_key = self._prior_singular_example_key(status_code)
+            examples = ensure_examples_dict(content, prior_singular_key=prior_key)
+            unique_key = self._unique_key(examples, example_key)
+            examples[unique_key] = {"value": example}
 
     def _add_dict_error(self, error_dict: Dict[int, Dict[str, Any]]) -> None:
         """Add error from dict in FastAPI responses format.
@@ -457,58 +475,24 @@ class Errors(Mapping):
 
                         # Handle example/examples
                         if "examples" in response_json:
-                            # Response has examples
-                            if "examples" not in existing_json:
-                                # Convert existing example to examples if needed
-                                if "example" in existing_json:
-                                    existing_example = existing_json.pop("example")
-                                    existing_json["examples"] = {
-                                        "default": {"value": existing_example},
-                                    }
-                                else:
-                                    existing_json["examples"] = {}
-
-                            # Merge examples
-                            existing_json["examples"].update(
-                                copy.deepcopy(response_json["examples"])
+                            prior_key = self._prior_singular_example_key(status_code)
+                            incoming_examples = response_json["examples"]
+                            if prior_key and prior_key in incoming_examples:
+                                prior_key = "default"
+                            merge_examples_map(
+                                existing_json,
+                                copy.deepcopy(incoming_examples),
+                                prior_singular_key=prior_key,
                             )
                         elif "example" in response_json:
-                            # Response has example - convert and merge
-                            if "examples" not in existing_json:
-                                # Convert existing example to examples if needed
-                                if "example" in existing_json:
-                                    existing_example = existing_json.pop("example")
-                                    # Check if existing example is from a standard flag
-                                    # Standard flags use specific messages
-                                    standard_messages = {
-                                        "Unauthorized": "StandardUnauthorized",
-                                        "Forbidden": "StandardForbidden",
-                                        "Validation error": "StandardValidationError",
-                                        "Internal Server Error": "StandardInternalServerError",
-                                    }
-                                    existing_detail = existing_example.get("detail", "")
-                                    example_key = standard_messages.get(
-                                        existing_detail, "default"
-                                    )
-                                    existing_json["examples"] = {
-                                        example_key: {"value": existing_example},
-                                    }
-                                else:
-                                    existing_json["examples"] = {}
-
-                            # Add new example - use "default" if available, otherwise unique key
-                            if "default" not in existing_json["examples"]:
-                                existing_json["examples"]["default"] = {
-                                    "value": response_json["example"]
-                                }
-                            else:
-                                # If default exists, add with a unique key
-                                unique_key = self._unique_key(
-                                    existing_json["examples"], "CustomExample"
-                                )
-                                existing_json["examples"][unique_key] = {
-                                    "value": response_json["example"]
-                                }
+                            merge_singular_example(
+                                existing_json,
+                                response_json["example"],
+                                prior_singular_key=self._prior_singular_example_key(
+                                    status_code
+                                ),
+                                unique_key_fn=self._unique_key,
+                            )
 
     def _add_error_dto(self, error_dto: ErrorDTO) -> None:
         """Add error from ErrorDTO (via Protocol).
@@ -536,6 +520,7 @@ class Errors(Mapping):
         dto_extras = _pick_error_dto_application_json_extra(error_dto)
         if dto_extras is not None:
             dto_extras = copy.deepcopy(dto_extras)
+        dto_model = _pick_error_dto_model(error_dto)
 
         if status_code not in self._responses:
             application_json: Dict[str, Any] = {"examples": examples}
@@ -543,46 +528,31 @@ class Errors(Mapping):
                 _merge_openapi_application_json_non_example(
                     application_json, dto_extras
                 )
-            self._responses[status_code] = {
+            response_block: Dict[str, Any] = {
                 "description": error_dto.message,
                 "content": {
                     "application/json": application_json,
                 },
             }
+            if dto_model is not None:
+                response_block["model"] = dto_model
+            self._responses[status_code] = response_block
         else:
-            # Merge examples for the same status code
-            # Safely access content/application/json with defaults
             existing = self._responses[status_code]
 
             _apply_dto_description(existing, error_dto, self.STANDARD_DESCRIPTIONS)
 
+            if dto_model is not None:
+                existing["model"] = dto_model
+
             existing_content = existing.setdefault("content", {})
             content_json = existing_content.setdefault("application/json", {})
-            existing_examples = content_json.get("examples", {})
-
-            if "example" in content_json:
-                # Convert example to examples with correct key for standard flags
-                existing_example = content_json.pop("example")
-                existing_detail = existing_example.get("detail", "")
-
-                # Check if existing example is from a standard flag
-                standard_messages = {
-                    "Unauthorized": "StandardUnauthorized",
-                    "Forbidden": "StandardForbidden",
-                    "Validation error": "StandardValidationError",
-                    "Internal Server Error": "StandardInternalServerError",
-                }
-                example_key = standard_messages.get(existing_detail, "default")
-
-                existing_examples = {
-                    example_key: {
-                        "value": existing_example,
-                    },
-                }
-
-            # Merge new examples from ErrorDTO
-            existing_examples.update(copy.deepcopy(examples))
-            content_json["examples"] = existing_examples
+            prior_key = self._prior_singular_example_key(status_code)
+            merge_examples_map(
+                content_json,
+                copy.deepcopy(examples),
+                prior_singular_key=prior_key,
+            )
 
             if dto_extras is not None:
                 _merge_openapi_application_json_non_example(content_json, dto_extras)
