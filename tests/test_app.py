@@ -16,9 +16,10 @@ router = APIRouter()
 # Domain Exception pattern for testing (Best Practice example)
 class DomainException(Exception):
     """Base exception implementing ErrorDTO protocol."""
+
     status_code: int
     message: str
-    
+
     def to_example(self) -> Dict[str, Any]:
         """Generate example for OpenAPI."""
         return {
@@ -26,7 +27,7 @@ class DomainException(Exception):
                 "value": {"detail": self.message},
             },
         }
-    
+
     @classmethod
     def for_openapi(cls):
         """Returns instance for OpenAPI documentation."""
@@ -35,13 +36,14 @@ class DomainException(Exception):
 
 class MockItemNotFoundError(DomainException):
     """Test item not found error."""
+
     status_code = status.HTTP_404_NOT_FOUND
     message = "Test item not found"
-    
+
     def __init__(self, item_id: str = ""):
         self.item_id = item_id
         super().__init__(self.message)
-    
+
     @classmethod
     def for_openapi(cls):
         """Returns instance for OpenAPI documentation."""
@@ -50,14 +52,15 @@ class MockItemNotFoundError(DomainException):
 
 class MockItemAccessDeniedError(DomainException):
     """Test item access denied error."""
+
     status_code = status.HTTP_403_FORBIDDEN
     message = "Test item access denied"
-    
+
     def __init__(self, item_id: str = "", user_id: str = ""):
         self.item_id = item_id
         self.user_id = user_id
         super().__init__(self.message)
-    
+
     @classmethod
     def for_openapi(cls):
         """Returns instance for OpenAPI documentation."""
@@ -129,14 +132,16 @@ def get_resource_error_dto(resource_id: int):
     "/mixed/{item_id}",
     status_code=status.HTTP_201_CREATED,
     responses=Errors(
-        {409: {  # Dict
-            "description": "Conflict",
-            "content": {
-                "application/json": {
-                    "example": {"detail": "Already exists"},
+        {
+            409: {  # Dict
+                "description": "Conflict",
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "Already exists"},
+                    },
                 },
-            },
-        }},
+            }
+        },
         SimpleErrorDTO(  # ErrorDTO
             status_code=404,
             message="Not found",
@@ -175,7 +180,9 @@ def update_item_merge_examples(item_id: int):
 # Example 6: Empty Errors (edge case)
 @router.get(
     "/empty-errors",
-    responses=Errors(validation_error=False),  # Explicitly disable 422 for endpoint without parameters
+    responses=Errors(
+        validation_error=False
+    ),  # Explicitly disable 422 for endpoint without parameters
 )
 def get_empty_errors():
     """Endpoint with no errors documented."""
@@ -193,7 +200,9 @@ def get_empty_errors():
                     "application/json": {
                         "examples": {
                             "InvalidToken": {"value": {"detail": "Invalid token"}},
-                            "SessionNotFound": {"value": {"detail": "Session not found"}},
+                            "SessionNotFound": {
+                                "value": {"detail": "Session not found"}
+                            },
                         },
                     },
                 },
@@ -277,9 +286,9 @@ def create_item_mixed_base_dto(item_id: int):
 @router.delete(
     "/domain-exception/{item_id}",
     responses=Errors(
-        MockItemNotFoundError.for_openapi(),      # Using for_openapi() pattern
+        MockItemNotFoundError.for_openapi(),  # Using for_openapi() pattern
         MockItemAccessDeniedError.for_openapi(),  # Using for_openapi() pattern
-        unauthorized_401=True,                    # Standard flag
+        unauthorized_401=True,  # Standard flag
     ),
 )
 def delete_item_domain_exception(item_id: str):
@@ -289,4 +298,3 @@ def delete_item_domain_exception(item_id: str):
 
 # Register router
 app.include_router(router, prefix="/api/v1", tags=["test"])
-

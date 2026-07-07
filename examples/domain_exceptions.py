@@ -14,7 +14,11 @@ Benefits:
 Structured error bodies that need OpenAPI JSON ``schema`` (e.g. ADR fields
 ``code`` / ``detail`` / ``context``) alongside examples: see README section
 *"OpenAPI extras (`schema`) next to examples"* — ``openapi_json_extras`` on
-``BaseErrorDTO`` / ``StandardErrorDTO`` or ``to_openapi_json_media_type_extras()`` on custom DTOs.
+``BaseErrorDTO`` / ``StandardErrorDTO`` / ``ErrorDoc`` or
+``to_openapi_json_media_type_extras()`` on custom DTOs.
+
+Implement ``to_examples()`` (canonical); legacy ``to_example()`` still works
+at runtime with a deprecation warning.
 """
 
 from typing import Dict, Any
@@ -35,8 +39,8 @@ class DomainException(Exception):
     status_code: int
     message: str
     
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI.
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate examples for OpenAPI.
         
         Returns:
             Dict in format: {"key": {"value": {"detail": "message"}}}

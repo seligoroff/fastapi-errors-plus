@@ -1,28 +1,31 @@
 """Base implementations of ErrorDTO protocol for convenience."""
 
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+from fastapi_errors_plus.example_utils import ExampleSpec, _normalize_example_specs
 
 
 @dataclass
 class BaseErrorDTO:
     """Base implementation of ErrorDTO Protocol.
-    
+
     Projects can use this class directly or create their own implementation
     that implements ErrorDTO Protocol through structural typing.
-    
+
     This class provides a simple way to create error DTOs without writing
     boilerplate code in every project.
-    
+
     Example:
         ```python
         from fastapi_errors_plus import Errors, BaseErrorDTO
-        
+
         notification_error = BaseErrorDTO(
             status_code=404,
             message="Notification not found",
         )
-        
+
         @router.delete(
             "/{id}",
             responses=Errors(notification_error),
@@ -31,51 +34,48 @@ class BaseErrorDTO:
             pass
         ```
     """
+
     status_code: int
     """HTTP status code for the error."""
-    
+
     message: str
     """Error message description."""
-    
+
     openapi_json_extras: Optional[Dict[str, Any]] = field(default=None)
     """Optional OpenAPI fragment under ``content['application/json']`` besides examples,
     typically ``{\"schema\": ...}`` or ``encoding``. Do **not** put ``example`` / ``examples``
     here — use :meth:`to_example`. Arbitrary implementations may instead implement
     :meth:`to_openapi_json_media_type_extras`; that return value wins over this attribute."""
-    
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI.
-        
-        Returns:
-            Dict in format: {"key": {"value": {"detail": "message"}}}
-            
-        Example:
-            ```python
-            {
-                "Notification not found": {
-                    "value": {"detail": "Notification not found"},
-                },
-            }
-            ```
-        """
+
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate OpenAPI ``examples`` for this error."""
         return {
             self.message: {
                 "value": {"detail": self.message},
             },
         }
 
+    def to_example(self) -> Dict[str, Any]:
+        """Deprecated alias for :meth:`to_examples`."""
+        warnings.warn(
+            "to_example() is deprecated; use to_examples() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.to_examples()
+
 
 @dataclass
 class StandardErrorDTO(BaseErrorDTO):
     """Extended implementation for errors with multiple examples.
-    
+
     Useful for standard HTTP errors (401, 403) that can have different
     causes with different messages.
-    
+
     Example:
         ```python
         from fastapi_errors_plus import Errors, StandardErrorDTO
-        
+
         unauthorized_error = StandardErrorDTO(
             status_code=401,
             message="Unauthorized",
@@ -84,7 +84,7 @@ class StandardErrorDTO(BaseErrorDTO):
                 "SessionNotFound": "Сессия пользователя не была найдена.",
             },
         )
-        
+
         @router.delete(
             "/{id}",
             responses=Errors(unauthorized_error),
@@ -93,39 +93,25 @@ class StandardErrorDTO(BaseErrorDTO):
             pass
         ```
     """
-    examples: Optional[Dict[str, str]] = field(default=None)
-    """Dictionary of examples: {"key": "message"}."""
-    
+
+    examples: Optional[Dict[str, ExampleSpec]] = field(default=None)
+    """Examples: ``str`` detail text or full OpenAPI example object (with ``summary``)."""
+
     def __post_init__(self) -> None:
         """Initialize examples with default value if not provided."""
         if self.examples is None:
             self.examples = {self.message: self.message}
-    
+
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate OpenAPI ``examples`` with optional summaries."""
+        assert self.examples is not None
+        return _normalize_example_specs(self.examples)
+
     def to_example(self) -> Dict[str, Any]:
-        """Generate examples for OpenAPI with multiple examples.
-        
-        Returns:
-            Dict in format: {"key": {"value": {"detail": "message"}}, ...}
-            
-        Example:
-            ```python
-            {
-                "InvalidToken": {
-                    "value": {"detail": "Ошибка декодирования токена."},
-                },
-                "SessionNotFound": {
-                    "value": {"detail": "Сессия пользователя не была найдена."},
-                },
-            }
-            ```
-        """
-        return {
-            key: {
-                "value": {"detail": message},
-            }
-            for key, message in self.examples.items()
-        }
-
-
-
-
+        """Deprecated alias for :meth:`to_examples`."""
+        warnings.warn(
+            "to_example() is deprecated; use to_examples() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.to_examples()

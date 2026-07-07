@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-07
+
+Semver: **minor** — response isolation fixes, `ErrorDoc`, `to_examples()` API, protocol split for legacy migration.
+
+### Fixed
+
+- **Dict aliasing:** `Errors` deep-copies incoming response dicts so shared registry templates and merge paths do not mutate caller data or leak between instances.
+- **DTO description merge:** `error_dto.message` is applied when an existing entry has no `description`, an empty one, or only the standard flag label.
+- **Mutable `__getitem__`:** `errors[status_code]` returns a deep copy so external mutation cannot corrupt internal state.
+- **Protocol typing:** `ErrorDTO` requires only `to_examples()`; added `LegacyErrorDTO` and `ErrorDTOLike` for transitional static typing.
+- **Example normalization:** dict specs are OpenAPI Example Objects only when keys ⊆ `{value, summary, description, externalValue}`; otherwise the dict is treated as the response body.
+- **Legacy deprecation noise:** `_collect_dto_examples` resolves methods via MRO and emits one deprecation warning per legacy class at the `Errors()` call site.
+- **Missing descriptions:** `Errors.__init__` fills absent response descriptions with `HTTPStatus.phrase` so OpenAPI generation does not fail on model-only dict entries.
+
+### Added
+
+- **`ErrorDoc`:** declarative error DTO with arbitrary example bodies and optional OpenAPI `summary` per example.
+- **`to_examples()`** on `ErrorDTO` / `BaseErrorDTO` / `StandardErrorDTO` / `ErrorDoc` as the canonical API; `to_example()` remains as a deprecated alias.
+- **`StandardErrorDTO`:** `examples` values may be full example objects (`summary` + `value`), not only detail strings.
+- **`fastapi_errors_plus.example_utils`:** shared example normalization for bundled and declarative DTOs.
+
+### Changed
+
+- **`Errors` validation:** accepts DTOs with either `to_examples()` or `to_example()`.
+- **`_add_error_dto`:** collects examples via `to_examples()` when present; deep-copies DTO example payloads and extras on merge.
+
+---
+
 ## [0.7.0] - 2026-05-02
 
 Semver: **minor** — additive API (`openapi_json_extras`, optional `to_openapi_json_media_type_extras()`), richer OpenAPI merge for **`application/json`**, plus backward-compatible import fix for 422.

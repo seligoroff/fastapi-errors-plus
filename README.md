@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-101-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-117-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Universal library for documenting errors in FastAPI endpoints.
@@ -138,7 +138,7 @@ class MyErrorDTO:
     status_code = 404
     message = "Not found"
     
-    def to_example(self):
+    def to_examples(self):
         return {
             "Not found": {
                 "value": {"detail": "Not found"},
@@ -183,7 +183,7 @@ def delete_item(id: int):
 
 #### OpenAPI extras (`schema`) next to examples
 
-ADR-style payloads (`code`, `detail`, optional `context`) need a **`schema`** in the spec besides **`examples`**. On **`BaseErrorDTO`** / **`StandardErrorDTO`** use **`openapi_json_extras`** (a dict merged under `content["application/json"]` — omit `example` / `examples` there; **`to_example()`** still defines examples):
+ADR-style payloads (`code`, `detail`, optional `context`) need a **`schema`** in the spec besides **`examples`**. On **`BaseErrorDTO`** / **`StandardErrorDTO`** / **`ErrorDoc`** use **`openapi_json_extras`** (a dict merged under `content["application/json"]` — omit `example` / `examples` there; **`to_examples()`** still defines examples):
 
 ```python
 from fastapi import APIRouter, status
@@ -257,6 +257,37 @@ def delete_item(id: int):
 - Correct implementation out of the box
 - Reusable across all endpoints
 - Supports inheritance for custom logic
+
+`examples` values may be **strings** (shorthand for `{"detail": text}`) or full OpenAPI Example Objects with **`summary`** and **`value`**.
+
+#### ErrorDoc
+
+For arbitrary response bodies (ADR `code` / `detail` / `context`, not only `detail` strings), use **`ErrorDoc`**:
+
+```python
+from fastapi_errors_plus import ErrorDoc, Errors
+
+permission_denied = ErrorDoc(
+    status_code=403,
+    message="Insufficient permissions",
+    examples={
+        "MissingRole": {
+            "summary": "User lacks required role",
+            "value": {
+                "code": "FORBIDDEN",
+                "detail": "Role admin required",
+            },
+        },
+    },
+    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
+)
+
+@router.delete("/{id}", responses=Errors(permission_denied))
+def delete_item(id: int):
+    ...
+```
+
+A **plain dict** as an example value is treated as the full response **body** unless it looks like an OpenAPI Example Object (keys only among `value`, `summary`, `description`, `externalValue`).
 
 ### 5. Mixed Usage
 
@@ -337,7 +368,7 @@ Order matters only for overlaps: whichever **`dict`** is applied **later** in th
 
 ## ErrorDTO Protocol
 
-The `ErrorDTO` protocol defines the interface for error objects compatible with the library:
+The canonical **`ErrorDTO`** protocol defines the interface for error objects compatible with the library:
 
 ```python
 from typing import Protocol, Dict, Any
@@ -346,27 +377,30 @@ class ErrorDTO(Protocol):
     status_code: int
     message: str
     
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI.
-        
-        Returns:
-            Dict in format: {"key": {"value": {"detail": "message"}}}
-        """
+    def to_examples(self) -> Dict[str, Any]:
+        """OpenAPI ``examples`` map: {"Key": {"value": {...}, "summary": "..."}}."""
         ...
 ```
 
 Any class implementing this protocol (through structural typing) can be used with `Errors()`.
 
+**Legacy migration:** classes that only define **`to_example()`** still work at **runtime** (`DeprecationWarning` once per class per `Errors()` call). For static typing use **`LegacyErrorDTO`** or the union alias **`ErrorDTOLike`** (`ErrorDTO | LegacyErrorDTO`).
+
 **Best Practice:** For maximum clarity, consider making your domain exceptions implement the ErrorDTO protocol directly. See [Best Practice: Connecting Exceptions and ErrorDTO](#best-practice-connecting-exceptions-and-errordto) for details.
 
 ### When to Use Protocol vs BaseErrorDTO
+
+Optional on custom DTOs (OpenAPI media-type extras without duplicating a status `dict`):
+
+- attribute **`openapi_json_extras`**: fragment for **`content["application/json"]`** (often `{"schema": ...}` — not for `example` / `examples`);
+- or method **`to_openapi_json_media_type_extras() -> Optional[dict]`** — when non-empty, overrides **`openapi_json_extras`**.
 
 **Use Protocol (structural typing)** when:
 - Your project already has error DTOs that implement the protocol
 - You need maximum flexibility and custom implementations
 - You want to keep your existing error infrastructure
 
-**Use BaseErrorDTO/StandardErrorDTO** when:
+**Use BaseErrorDTO/StandardErrorDTO/ErrorDoc** when:
 - Starting a new project or adding error documentation
 - You want a ready-to-use implementation without boilerplate
 - You need multiple examples for standard HTTP errors (401, 403, etc.)
@@ -377,7 +411,7 @@ Both approaches work together — you can mix them in the same `Errors()` call!
 
 **Note:** Pydantic is **not required** to use this library. This section is for projects that already use Pydantic and want to integrate it with the ErrorDTO protocol.
 
-Since the library uses structural typing (Protocol), any class that implements the required attributes (`status_code`, `message`, `to_example()`) will work, including Pydantic models.
+Since the library uses structural typing (Protocol), any class that implements the required attributes (`status_code`, `message`, `to_examples()`) will work, including Pydantic models. Legacy `to_example()` is still accepted at runtime.
 
 ### Simple Pydantic Model as ErrorDTO
 
@@ -391,8 +425,8 @@ class PydanticErrorDTO(BaseModel):
     status_code: int = Field(..., ge=400, le=599, description="HTTP status code")
     message: str = Field(..., min_length=1, description="Error message")
     
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI."""
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate examples for OpenAPI."""
         return {
             self.message: {
                 "value": {"detail": self.message},
@@ -435,8 +469,8 @@ class DetailedErrorDTO(BaseModel):
     error_code: Optional[str] = Field(None, description="Internal error code")
     timestamp: Optional[str] = Field(None, description="Error timestamp")
     
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI."""
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate examples for OpenAPI."""
         example = {"detail": self.message}
         if self.error_code:
             example["error_code"] = self.error_code
@@ -493,7 +527,7 @@ class DomainException(Exception):
     status_code: int
     message: str
     
-    def to_example(self) -> Dict[str, Any]:
+    def to_examples(self) -> Dict[str, Any]:
         return {self.message: {"value": {"detail": self.message}}}
     
     @classmethod
@@ -536,7 +570,7 @@ See [examples/domain_exceptions.py](examples/domain_exceptions.py) for complete 
 
 ## Compatibility with Existing Projects
 
-If your project already has error DTOs (like `ApiErrorDTO`), they can work with `fastapi-errors-plus` if they implement the `ErrorDTO` protocol:
+If your project already has error DTOs (like `ApiErrorDTO`), they can work with `fastapi-errors-plus` if they implement the `ErrorDTO` protocol (or legacy `to_example()` during migration):
 
 ```python
 # Your existing ApiErrorDTO
@@ -545,7 +579,7 @@ class ApiErrorDTO:
     status_code: int
     message: str
     
-    def to_example(self) -> dict:
+    def to_examples(self) -> dict:
         return {
             self.message: {
                 "value": {"detail": self.message},
@@ -614,8 +648,12 @@ FastAPI automatically validates all parameters (Path, Query, Body), so 422 is re
 ```python
 # Instances are Mapping keyed by HTTP status codes
 error_responses = Errors(unauthorized_401=True, forbidden_403=True)
-documented = error_responses[401]  # response block picked up by OpenAPI
+documented = error_responses[401]  # deep copy — safe to read, won't mutate internal state
 ```
+
+**Isolation (0.8+):** incoming response **dicts** are **deep-copied** on ingest; **`errors[status]`** returns a **deep copy** so callers cannot corrupt shared registry templates or internal merge state.
+
+**Descriptions:** response blocks with only **`model`** (no `description`) get a default from **`HTTPStatus.phrase`** so OpenAPI generation does not fail.
 
 ### `ErrorDTO`
 
@@ -626,9 +664,32 @@ Protocol for error objects compatible with the library.
 - `message: str` — Error message description
 
 **Required methods:**
-- `to_example() -> Dict[str, Any]` — Generate example for OpenAPI
+- `to_examples() -> Dict[str, Any]` — OpenAPI `examples` map for `application/json`
 
-During `Errors(...)` initialization, non-`dict` objects in `*errors` missing `status_code`, `message`, or a callable `to_example` raise **`TypeError`** naming what was missing.
+During `Errors(...)` initialization, non-`dict` objects in `*errors` missing `status_code`, `message`, or a callable **`to_examples()`** / **`to_example()`** raise **`TypeError`** naming what was missing.
+
+### `LegacyErrorDTO` / `ErrorDTOLike`
+
+- **`LegacyErrorDTO`** — typing helper for classes that only implement deprecated **`to_example()`**.
+- **`ErrorDTOLike`** — `Union[ErrorDTO, LegacyErrorDTO]` for transitional annotations.
+
+### `ErrorDoc`
+
+Declarative DTO for arbitrary example bodies and per-example **`summary`**.
+
+**Constructor:**
+```python
+ErrorDoc(
+    status_code: int,
+    message: str,
+    examples: Optional[Dict[str, str | dict]] = None,
+    body: Optional[Dict[str, Any]] = None,
+    example_key: Optional[str] = None,
+    openapi_json_extras: Optional[Dict[str, Any]] = None,
+)
+```
+
+When **`examples`** is omitted, a single example is built from **`body`** or `{"detail": message}`.
 
 ### `BaseErrorDTO`
 
@@ -767,7 +828,7 @@ class DomainException(Exception):
     def __init__(self) -> None:
         super().__init__(self.message)
 
-    def to_example(self) -> Dict[str, Any]:
+    def to_examples(self) -> Dict[str, Any]:
         return {
             self.message: {
                 "value": {"detail": self.message},
