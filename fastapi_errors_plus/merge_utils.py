@@ -1,5 +1,6 @@
 """Shared OpenAPI example merge helpers (internal)."""
 
+import copy
 from typing import Any, Callable, Dict, Optional
 
 # Example keys produced by standard HTTP status flags in :class:`Errors`.
@@ -61,7 +62,25 @@ def merge_examples_map(
     incoming_examples: Dict[str, Any],
     *,
     prior_singular_key: Optional[str] = None,
+    unique_key_fn: Optional[Callable[[Dict[str, Any], str], str]] = None,
 ) -> None:
-    """Merge an ``examples`` map into ``media_json``."""
+    """Merge an ``examples`` map into ``media_json``.
+
+    Policy:
+    - if an incoming example key collides with an existing one, do NOT silently
+      overwrite; instead, allocate a unique key (when ``unique_key_fn`` is provided).
+    - if no ``unique_key_fn`` is provided, fall back to last-wins overwrite
+      (backwards compatible behavior for any internal callers).
+    """
     examples = ensure_examples_dict(media_json, prior_singular_key=prior_singular_key)
-    examples.update(incoming_examples)
+    for key, value in incoming_examples.items():
+        if key not in examples:
+            examples[key] = copy.deepcopy(value)
+            continue
+        if unique_key_fn is None:
+            # Backwards compatible fallback: silent overwrite.
+            examples[key] = copy.deepcopy(value)
+            continue
+        unique_key = unique_key_fn(examples, key)
+        examples[unique_key] = copy.deepcopy(value)
+

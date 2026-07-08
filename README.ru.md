@@ -112,7 +112,7 @@ def get_protected():
 
 **Почему явные флаги?** Новые флаги со статус-кодами (`_401`, `_403` и т.д.) делают сразу понятным, какой HTTP статус-код соответствует каждому флагу.
 
-**Про 422:** если не передавать ни `validation_error`, ни `validation_error_422`, библиотека пока добавляет **422**, но выдаёт **`DeprecationWarning`** — в **1.0** дефолт станет **`False`**. Для ADR-API явно укажите `validation_error_422=False` или используйте **`ErrorProfile`** ниже.
+**Про 422:** если не передавать ни `validation_error`, ни `validation_error_422`, библиотека пока добавляет **422**, но выдаёт **`DeprecationWarning`** — в **1.0** дефолт станет **`False`**. Для ADR-API явно укажите `validation_error_422=False` или используйте **`ErrorProfile`** ниже: это отключает только *наш* 422 внутри `Errors`, тогда как FastAPI по-прежнему может возвращать авто-422 `HTTPValidationError` при валидации параметров/тела. В контрактных тестах проекта эти два источника 422 стоит проверять и учитывать раздельно.
 
 ### 2. Ошибки через dict
 
@@ -656,18 +656,23 @@ def delete_item(id: int):
 #### Конструктор
 
 ```python
-Errors(
-    *errors: Union[Dict[int, Dict[str, Any]], ErrorDTO],
-    unauthorized: bool = False,
-    forbidden: bool = False,
-    validation_error: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
-    internal_server_error: bool = False,
-    unauthorized_401: Optional[bool] = None,
-    forbidden_403: Optional[bool] = None,
-    validation_error_422: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
-    internal_server_error_500: Optional[bool] = None,
-    profile: Optional[ErrorProfile] = None,
-)
+from typing import Any, Dict, Optional, Union
+
+class Errors:
+    def __init__(
+        self,
+        *errors: Union[Dict[int, Dict[str, Any]], "ErrorDTO"],
+        unauthorized: bool = False,
+        forbidden: bool = False,
+        validation_error: Optional[bool] = None,
+        internal_server_error: bool = False,
+        unauthorized_401: Optional[bool] = None,
+        forbidden_403: Optional[bool] = None,
+        validation_error_422: Optional[bool] = None,
+        internal_server_error_500: Optional[bool] = None,
+        profile: Optional["ErrorProfile"] = None,
+    ) -> None:
+        ...
 ```
 
 **Параметры:**
@@ -730,16 +735,21 @@ documented = error_responses[401]  # deep copy — безопасно читат
 
 **Конструктор:**
 ```python
-ErrorDoc(
-    status_code: int,
-    message: str,
-    examples: Optional[Dict[str, str | dict]] = None,
-    body: Optional[Dict[str, Any]] = None,
-    example_key: Optional[str] = None,
-    model: Any = None,
-    schema: Optional[Dict[str, Any]] = None,
-    openapi_json_extras: Optional[Dict[str, Any]] = None,
-)
+from typing import Any, Dict, Optional
+
+class ErrorDoc:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        examples: Optional[Dict[str, str | dict]] = None,
+        body: Optional[Dict[str, Any]] = None,
+        example_key: Optional[str] = None,
+        model: Any = None,
+        schema: Optional[Dict[str, Any]] = None,
+        openapi_json_extras: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        ...
 ```
 
 Если **`examples`** не задан, один пример строится из **`body`** или `{"detail": message}`.
@@ -749,12 +759,17 @@ ErrorDoc(
 Frozen-дефолты для стандартных HTTP-флагов.
 
 ```python
-ErrorProfile(
-    unauthorized_401: Optional[bool] = None,
-    forbidden_403: Optional[bool] = None,
-    validation_error_422: Optional[bool] = None,
-    internal_server_error_500: Optional[bool] = None,
-)
+from typing import Optional
+
+class ErrorProfile:
+    def __init__(
+        self,
+        unauthorized_401: Optional[bool] = None,
+        forbidden_403: Optional[bool] = None,
+        validation_error_422: Optional[bool] = None,
+        internal_server_error_500: Optional[bool] = None,
+    ) -> None:
+        ...
 ```
 
 ### `BaseErrorDTO`
@@ -763,13 +778,18 @@ ErrorProfile(
 
 **Конструктор:**
 ```python
-BaseErrorDTO(
-    status_code: int,
-    message: str,
-    model: Any = None,
-    schema: Optional[Dict[str, Any]] = None,
-    openapi_json_extras: Optional[Dict[str, Any]] = None,
-)
+from typing import Any, Dict, Optional
+
+class BaseErrorDTO:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        model: Any = None,
+        schema: Optional[Dict[str, Any]] = None,
+        openapi_json_extras: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        ...
 ```
 
 **Пример:**
@@ -783,12 +803,17 @@ error = BaseErrorDTO(status_code=404, message="Not found")
 
 **Конструктор:**
 ```python
-StandardErrorDTO(
-    status_code: int,
-    message: str,
-    openapi_json_extras: Optional[Dict[str, Any]] = None,
-    examples: Optional[Dict[str, str]] = None,
-)
+from typing import Any, Dict, Optional
+
+class StandardErrorDTO:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        openapi_json_extras: Optional[Dict[str, Any]] = None,
+        examples: Optional[Dict[str, str]] = None,
+    ) -> None:
+        ...
 ```
 
 **Пример:**
@@ -845,9 +870,9 @@ router = APIRouter()
 @router.delete(
     "/{notificationId}",
     responses=Errors(
+        notification_not_found_error,
         unauthorized=True,
         forbidden=True,
-        notification_not_found_error,
     ),
 )
 async def delete_notification(notification_id: int):
@@ -861,7 +886,6 @@ async def delete_notification(notification_id: int):
 @router.delete(
     "/{id}",
     responses=Errors(
-        unauthorized=True,  # Базовый 401
         {401: {  # Переопределяем с множественными примерами
             "description": "Unauthorized",
             "content": {
@@ -873,6 +897,7 @@ async def delete_notification(notification_id: int):
                 },
             },
         }},
+        unauthorized=True,  # Базовый 401
     ),
 )
 def delete_item(id: int):
@@ -952,10 +977,10 @@ router = APIRouter()
     "/items",
     status_code=status.HTTP_201_CREATED,
     responses=Errors(
+        ItemAlreadyExistsError(),  # Доменная ошибка
         unauthorized=True,  # Из dependency аутентификации
         forbidden=True,     # Из dependency авторизации
         # validation_error=True - не нужно указывать, по умолчанию True (FastAPI валидирует все параметры)
-        ItemAlreadyExistsError(),  # Доменная ошибка
     ),
 )
 async def create_item(
@@ -975,9 +1000,9 @@ async def create_item(
 @router.get(
     "/items/{item_id}",
     responses=Errors(
+        ItemNotFoundError(),  # Доменная ошибка
         unauthorized=True,
         forbidden=True,
-        ItemNotFoundError(),  # Доменная ошибка
     ),
 )
 async def get_item(

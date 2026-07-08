@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-07-08
+
+Semver: **patch** — fix OpenAPI responses merge correctness and README syntax validation.
+
+### Fixed
+- **Merge correctness:** when merging dict responses for the same `status_code`, `Errors` now preserves:
+  - all non-`application/json` media types under `content`
+  - response-level `headers` and `links` (no dropping on status-code collisions)
+- **No silent `examples` overwrite:** collisions inside `content["application/json"]["examples"]` no longer silently replace an existing example; instead, a unique example key is allocated.
+
+### Added
+- **README guard:** `tests/test_readme_python_blocks.py` verifies all fenced `python` blocks in `README.md` / `README.ru.md` are syntactically valid via `ast.parse`.
+
+### Changed
+- **Example merge policy:** `merge_utils.merge_examples_map()` now supports collision-safe merging via an injected `unique_key_fn`.
+- **README/contract clarification:** expanded explanation for `validation_error_422=False` (disables only the library-managed 422 entry in `Errors`; FastAPI may still return auto-422 `HTTPValidationError`).
+
 ## [0.9.1] - 2026-07-08
 
 Semver: **patch** — profile override fix, migration guidance, pitfalls docs, and typing/lint cleanup.

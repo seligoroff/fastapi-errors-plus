@@ -96,7 +96,7 @@ Use boolean flags for common HTTP status codes:
 - `validation_error=True` → 422 Unprocessable Entity
 - `internal_server_error=True` → 500 Internal Server Error
 
-**Note on 422:** If you omit both `validation_error` and `validation_error_422`, the library still adds **422** today but emits a **`DeprecationWarning`** — the default will become **`False` in 1.0**. For ADR-style APIs, set `validation_error_422=False` explicitly (or use **`ErrorProfile`** below).
+**Note on 422:** If you omit both `validation_error` and `validation_error_422`, the library still adds **422** today but emits a **`DeprecationWarning`** — the default will become **`False` in 1.0**. For ADR-style APIs, set `validation_error_422=False` explicitly (or use **`ErrorProfile`** below): this disables only the library-managed 422 entry in `Errors`, while FastAPI may still return its own auto-422 `HTTPValidationError` for parameter/body validation. Make sure your contract tests treat auto-422 from FastAPI and documented 422 in `Errors` as separate concerns.
 
 ```python
 @router.get(
@@ -655,18 +655,23 @@ Main class for documenting errors in FastAPI endpoints.
 #### Constructor
 
 ```python
-Errors(
-    *errors: Union[Dict[int, Dict[str, Any]], ErrorDTO],
-    unauthorized: bool = False,
-    forbidden: bool = False,
-    validation_error: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
-    internal_server_error: bool = False,
-    unauthorized_401: Optional[bool] = None,
-    forbidden_403: Optional[bool] = None,
-    validation_error_422: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
-    internal_server_error_500: Optional[bool] = None,
-    profile: Optional[ErrorProfile] = None,
-)
+from typing import Any, Dict, Optional, Union
+
+class Errors:
+    def __init__(
+        self,
+        *errors: Union[Dict[int, Dict[str, Any]], "ErrorDTO"],
+        unauthorized: bool = False,
+        forbidden: bool = False,
+        validation_error: Optional[bool] = None,
+        internal_server_error: bool = False,
+        unauthorized_401: Optional[bool] = None,
+        forbidden_403: Optional[bool] = None,
+        validation_error_422: Optional[bool] = None,
+        internal_server_error_500: Optional[bool] = None,
+        profile: Optional["ErrorProfile"] = None,
+    ) -> None:
+        ...
 ```
 
 **Parameters:**
@@ -731,16 +736,21 @@ Declarative DTO for arbitrary example bodies and per-example **`summary`**.
 
 **Constructor:**
 ```python
-ErrorDoc(
-    status_code: int,
-    message: str,
-    examples: Optional[Dict[str, str | dict]] = None,
-    body: Optional[Dict[str, Any]] = None,
-    example_key: Optional[str] = None,
-    model: Any = None,
-    schema: Optional[Dict[str, Any]] = None,
-    openapi_json_extras: Optional[Dict[str, Any]] = None,
-)
+from typing import Any, Dict, Optional
+
+class ErrorDoc:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        examples: Optional[Dict[str, str | dict]] = None,
+        body: Optional[Dict[str, Any]] = None,
+        example_key: Optional[str] = None,
+        model: Any = None,
+        schema: Optional[Dict[str, Any]] = None,
+        openapi_json_extras: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        ...
 ```
 
 When **`examples`** is omitted, a single example is built from **`body`** or `{"detail": message}`.
@@ -750,12 +760,17 @@ When **`examples`** is omitted, a single example is built from **`body`** or `{"
 Frozen project-wide defaults for standard HTTP flags.
 
 ```python
-ErrorProfile(
-    unauthorized_401: Optional[bool] = None,
-    forbidden_403: Optional[bool] = None,
-    validation_error_422: Optional[bool] = None,
-    internal_server_error_500: Optional[bool] = None,
-)
+from typing import Optional
+
+class ErrorProfile:
+    def __init__(
+        self,
+        unauthorized_401: Optional[bool] = None,
+        forbidden_403: Optional[bool] = None,
+        validation_error_422: Optional[bool] = None,
+        internal_server_error_500: Optional[bool] = None,
+    ) -> None:
+        ...
 ```
 
 ### `BaseErrorDTO`
@@ -764,13 +779,18 @@ Base implementation of ErrorDTO Protocol for convenience.
 
 **Constructor:**
 ```python
-BaseErrorDTO(
-    status_code: int,
-    message: str,
-    model: Any = None,
-    schema: Optional[Dict[str, Any]] = None,
-    openapi_json_extras: Optional[Dict[str, Any]] = None,
-)
+from typing import Any, Dict, Optional
+
+class BaseErrorDTO:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        model: Any = None,
+        schema: Optional[Dict[str, Any]] = None,
+        openapi_json_extras: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        ...
 ```
 
 **Example:**
@@ -784,12 +804,17 @@ Extended implementation for errors with multiple examples.
 
 **Constructor:**
 ```python
-StandardErrorDTO(
-    status_code: int,
-    message: str,
-    openapi_json_extras: Optional[Dict[str, Any]] = None,
-    examples: Optional[Dict[str, str]] = None,
-)
+from typing import Any, Dict, Optional
+
+class StandardErrorDTO:
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        openapi_json_extras: Optional[Dict[str, Any]] = None,
+        examples: Optional[Dict[str, str]] = None,
+    ) -> None:
+        ...
 ```
 
 **Example:**
@@ -846,9 +871,9 @@ router = APIRouter()
 @router.delete(
     "/{notificationId}",
     responses=Errors(
+        notification_not_found_error,
         unauthorized=True,
         forbidden=True,
-        notification_not_found_error,
     ),
 )
 async def delete_notification(notification_id: int):
@@ -862,7 +887,6 @@ async def delete_notification(notification_id: int):
 @router.delete(
     "/{id}",
     responses=Errors(
-        unauthorized=True,  # Basic 401
         {401: {  # Override with multiple examples
             "description": "Unauthorized",
             "content": {
@@ -874,6 +898,7 @@ async def delete_notification(notification_id: int):
                 },
             },
         }},
+        unauthorized=True,  # Basic 401
     ),
 )
 def delete_item(id: int):
@@ -952,10 +977,10 @@ router = APIRouter()
     "/items",
     status_code=status.HTTP_201_CREATED,
     responses=Errors(
+        ItemAlreadyExistsError(),  # Domain error
         unauthorized=True,  # From authentication dependency
         forbidden=True,     # From authorization dependency
         # validation_error=True - not needed, defaults to True (FastAPI validates all parameters)
-        ItemAlreadyExistsError(),  # Domain error
     ),
 )
 async def create_item(
@@ -975,9 +1000,9 @@ async def create_item(
 @router.get(
     "/items/{item_id}",
     responses=Errors(
+        ItemNotFoundError(),  # Domain error
         unauthorized=True,
         forbidden=True,
-        ItemNotFoundError(),  # Domain error
     ),
 )
 async def get_item(

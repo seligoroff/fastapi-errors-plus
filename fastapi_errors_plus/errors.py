@@ -475,32 +475,50 @@ class Errors(Mapping):
                 if "model" in response_data:
                     existing["model"] = response_data["model"]
 
+                # Merge response-level metadata (headers/links).
+                # Keep existing keys and update with incoming keys (later-wins per key).
+                for key in ("headers", "links"):
+                    if key not in response_data:
+                        continue
+                    incoming_val = response_data[key]
+                    if key not in existing or not isinstance(existing.get(key), dict):
+                        existing[key] = copy.deepcopy(incoming_val)
+                    elif isinstance(incoming_val, dict):
+                        existing[key].update(copy.deepcopy(incoming_val))
+                    else:
+                        # Non-dict values: later-wins fallback.
+                        existing[key] = copy.deepcopy(incoming_val)
+
                 # Merge content
                 if "content" in response_data:
                     existing_content = existing.setdefault("content", {})
                     response_content = response_data["content"]
 
-                    # Merge application/json
-                    if "application/json" in response_content:
-                        existing_json = existing_content.setdefault(
-                            "application/json", {}
-                        )
-                        response_json = response_content["application/json"]
+                    # application/json is special: its non-example keys and examples are merged.
+                    # Other media types are later-wins, but we must not drop any existing media types.
+                    for media_type, media_obj in response_content.items():
+                        if media_type != "application/json":
+                            existing_content[media_type] = copy.deepcopy(media_obj)
+                            continue
+
+                        existing_json = existing_content.setdefault("application/json", {})
+                        response_json = media_obj
 
                         _merge_openapi_application_json_non_example(
                             existing_json, response_json
                         )
 
-                        # Handle example/examples
+                        # Handle example/examples (accumulate under examples).
                         if "examples" in response_json:
                             prior_key = self._prior_singular_example_key(status_code)
                             incoming_examples = response_json["examples"]
-                            if prior_key and prior_key in incoming_examples:
+                            if prior_key and isinstance(incoming_examples, dict) and prior_key in incoming_examples:
                                 prior_key = "default"
                             merge_examples_map(
                                 existing_json,
                                 copy.deepcopy(incoming_examples),
                                 prior_singular_key=prior_key,
+                                unique_key_fn=self._unique_key,
                             )
                         elif "example" in response_json:
                             merge_singular_example(
@@ -570,6 +588,7 @@ class Errors(Mapping):
                 content_json,
                 copy.deepcopy(examples),
                 prior_singular_key=prior_key,
+                unique_key_fn=self._unique_key,
             )
 
             if dto_extras is not None:

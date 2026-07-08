@@ -642,6 +642,54 @@ class TestErrorsEdgeCases:
         # Last dict should win (dict.update behavior)
         assert responses[status.HTTP_404_NOT_FOUND]["description"] == "Second"
 
+    def test_merge_drop_preserves_non_json_media_types_and_headers_links(self):
+        """When status code collides, merge must not drop non-json content or headers/links."""
+        errors = Errors(
+            {
+                401: {
+                    "description": "First",
+                    "headers": {"X-A": {"description": "a"}},
+                    "links": {"L-A": {"operationId": "a"}},
+                    "content": {
+                        "application/problem+json": {
+                            "example": {"detail": "p1"}
+                        },
+                        "text/plain": {"example": "t1"},
+                    },
+                }
+            },
+            {
+                401: {
+                    "description": "Second",
+                    "headers": {"X-B": {"description": "b"}},
+                    "links": {"L-B": {"operationId": "b"}},
+                    "content": {
+                        "application/problem+json": {
+                            "example": {"detail": "p2"}
+                        }
+                    },
+                }
+            },
+        )
+
+        resp = errors[status.HTTP_401_UNAUTHORIZED]
+        assert resp["description"] == "Second"
+
+        # Non-application/json media types must be preserved (not dropped).
+        assert "text/plain" in resp["content"]
+        assert resp["content"]["text/plain"]["example"] == "t1"
+
+        # application/problem+json should update from the later dict.
+        assert (
+            resp["content"]["application/problem+json"]["example"]["detail"] == "p2"
+        )
+
+        # Response-level headers/links should be merged (not dropped).
+        assert "headers" in resp
+        assert set(resp["headers"].keys()) == {"X-A", "X-B"}
+        assert "links" in resp
+        assert set(resp["links"].keys()) == {"L-A", "L-B"}
+
     def test_errors_is_mapping(self):
         """Test that Errors implements Mapping protocol."""
         errors = Errors(
@@ -711,6 +759,40 @@ class TestUniqueKeys:
         assert "default" in examples
         # Second example should have unique key
         assert "CustomExample" in examples or "CustomExample_2" in examples
+        assert len(examples) == 2
+
+    def test_unique_keys_for_examples_map_collisions(self):
+        """If both fragments provide examples with same key, later must not overwrite silently."""
+        errors = Errors(
+            {
+                401: {
+                    "content": {
+                        "application/json": {
+                            "examples": {
+                                "E": {"value": {"detail": "First"}},
+                            },
+                        },
+                    },
+                }
+            },
+            {
+                401: {
+                    "content": {
+                        "application/json": {
+                            "examples": {
+                                "E": {"value": {"detail": "Second"}},
+                            },
+                        },
+                    },
+                }
+            },
+        )
+
+        examples = errors[401]["content"]["application/json"]["examples"]
+        assert "E" in examples
+        assert "E_2" in examples
+        assert examples["E"]["value"]["detail"] == "First"
+        assert examples["E_2"]["value"]["detail"] == "Second"
         assert len(examples) == 2
 
     def test_unique_keys_multiple_collisions(self):
