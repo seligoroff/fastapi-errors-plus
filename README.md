@@ -67,6 +67,17 @@ def delete_item(id: int):
     pass
 ```
 
+## 1.0 Readiness (for 0.9.x users)
+
+Before upgrading to **1.0**, complete this checklist:
+
+- Replace legacy kwargs: `unauthorized`, `forbidden`, `validation_error`, `internal_server_error`
+  with `unauthorized_401`, `forbidden_403`, `validation_error_422`, `internal_server_error_500`.
+- Set `validation_error_422` explicitly (or via `ErrorProfile`) for each endpoint/profile.
+- Run OpenAPI diff in CI and confirm expected 401/403/422/500 blocks are still present.
+
+Detailed checklist: [localdocs/notes/migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md).
+
 ## Features
 
 ### 1. Standard HTTP Status Flags
@@ -650,23 +661,23 @@ Errors(
     forbidden: bool = False,
     validation_error: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
     internal_server_error: bool = False,
-    unauthorized_401: bool = False,
-    forbidden_403: bool = False,
+    unauthorized_401: Optional[bool] = None,
+    forbidden_403: Optional[bool] = None,
     validation_error_422: Optional[bool] = None,  # None (default) => True (FastAPI validates all parameters)
-    internal_server_error_500: bool = False,
+    internal_server_error_500: Optional[bool] = None,
     profile: Optional[ErrorProfile] = None,
 )
 ```
 
 **Parameters:**
 - `*errors`: Arbitrary errors as dict or ErrorDTO objects
-- `unauthorized_401`: Add 401 Unauthorized error (recommended, explicit). Defaults to `False`.
-- `forbidden_403`: Add 403 Forbidden error (recommended, explicit). Defaults to `False`.
+- `unauthorized_401`: Add 401 Unauthorized error (recommended, explicit). `None` means "use profile/default".
+- `forbidden_403`: Add 403 Forbidden error (recommended, explicit). `None` means "use profile/default".
 - `validation_error_422`: Add 422 Unprocessable Entity error (recommended, explicit). 
   - `None` (default): Add 422 (True by default, FastAPI validates all parameters)
   - `False`: Explicitly disable 422
   - `True`: Explicitly enable 422
-- `internal_server_error_500`: Add 500 Internal Server Error (recommended, explicit). Defaults to `False`.
+- `internal_server_error_500`: Add 500 Internal Server Error (recommended, explicit). `None` means "use profile/default".
 - `unauthorized`: Add 401 Unauthorized error (legacy, for backward compatibility). Defaults to `False`.
 - `forbidden`: Add 403 Forbidden error (legacy, for backward compatibility). Defaults to `False`.
 - `validation_error`: Add 422 Unprocessable Entity error (legacy, for backward compatibility). 
@@ -740,10 +751,10 @@ Frozen project-wide defaults for standard HTTP flags.
 
 ```python
 ErrorProfile(
-    unauthorized_401: bool = False,
-    forbidden_403: bool = False,
+    unauthorized_401: Optional[bool] = None,
+    forbidden_403: Optional[bool] = None,
     validation_error_422: Optional[bool] = None,
-    internal_server_error_500: bool = False,
+    internal_server_error_500: Optional[bool] = None,
 )
 ```
 
@@ -1004,6 +1015,16 @@ The library improves **transparency of documented** errors. It does **not** solv
 - Find all real errors in an endpoint automatically
 - Analyze code to discover errors
 - Guarantee completeness of error lists
+
+## Common Pitfalls
+
+- **Runtime vs documented divergence**: an exception can be raised at runtime but missing in
+  `responses=Errors(...)` (OpenAPI won't detect this automatically).
+- **`Depends()` exceptions**: auth/permission dependencies may raise 401/403, but if they are not
+  declared in `Errors(...)`, the spec is incomplete.
+- **Over-documented responses**: `Errors(...)` can include responses that are never raised by endpoint logic.
+- **1.0 migration surprise**: if you rely on implicit 422 today, pin it explicitly with
+  `validation_error_422=True/False` before moving to 1.0.
 
 ## Contributing
 

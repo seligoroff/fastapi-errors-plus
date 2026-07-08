@@ -23,7 +23,13 @@ def ensure_examples_dict(
 ) -> Dict[str, Any]:
     """Ensure ``media_json`` has an ``examples`` dict; promote singular ``example`` if needed."""
     if "examples" in media_json:
-        return media_json["examples"]
+        existing = media_json["examples"]
+        if isinstance(existing, dict):
+            return existing
+        # Defensive fallback for malformed user dicts.
+        fallback: Dict[str, Any] = {}
+        media_json["examples"] = fallback
+        return fallback
     examples: Dict[str, Any] = {}
     if "example" in media_json:
         key = prior_singular_key or "default"

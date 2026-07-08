@@ -33,6 +33,24 @@ class TestErrorProfile:
         errors2 = Errors(profile=profile)
         assert 409 not in errors2
 
+    def test_explicit_false_must_override_profile_true(self):
+        profile = ErrorProfile(
+            unauthorized_401=True,
+            forbidden_403=True,
+            internal_server_error_500=True,
+            validation_error_422=False,
+        )
+        errors = Errors(
+            profile=profile,
+            unauthorized_401=False,
+            forbidden_403=False,
+            internal_server_error_500=False,
+            validation_error_422=False,
+        )
+        assert status.HTTP_401_UNAUTHORIZED not in errors
+        assert status.HTTP_403_FORBIDDEN not in errors
+        assert status.HTTP_500_INTERNAL_SERVER_ERROR not in errors
+
 
 @pytest.mark.unit
 class TestDtoModelAndSchema:

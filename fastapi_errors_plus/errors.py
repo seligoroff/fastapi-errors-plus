@@ -184,12 +184,12 @@ class Errors(Mapping):
         ] = None,  # 422 (None = use default True, False = disable, True = enable)
         internal_server_error: bool = False,  # 500
         # New parameters with explicit status codes (recommended)
-        unauthorized_401: bool = False,  # 401 (explicit)
-        forbidden_403: bool = False,  # 403 (explicit)
+        unauthorized_401: Optional[bool] = None,  # 401 (explicit)
+        forbidden_403: Optional[bool] = None,  # 403 (explicit)
         validation_error_422: Optional[
             bool
         ] = None,  # 422 (explicit, None = use default True, False = disable, True = enable)
-        internal_server_error_500: bool = False,  # 500 (explicit)
+        internal_server_error_500: Optional[bool] = None,  # 500 (explicit)
         profile: Optional[ErrorProfile] = None,
     ) -> None:
         """Initialize Errors instance.
@@ -211,15 +211,15 @@ class Errors(Mapping):
                 Deprecated: Use `validation_error_422` instead for explicit status code.
             internal_server_error: Add 500 Internal Server Error. Defaults to False.
                 Deprecated: Use `internal_server_error_500` instead for explicit status code.
-            unauthorized_401: Add 401 Unauthorized error (explicit). Defaults to False.
-            forbidden_403: Add 403 Forbidden error (explicit). Defaults to False.
+            unauthorized_401: Add 401 Unauthorized error (explicit). None means "use profile/default".
+            forbidden_403: Add 403 Forbidden error (explicit). None means "use profile/default".
             validation_error_422: Add 422 Unprocessable Entity error (explicit).
                 - None (default): Add 422 (True by default, FastAPI validates all parameters)
                 - False: Explicitly disable 422
                 - True: Explicitly enable 422
                 FastAPI automatically validates all parameters (Path, Query, Body), so 422 is relevant
                 in 95%+ of endpoints. Set to False only for endpoints without parameters.
-            internal_server_error_500: Add 500 Internal Server Error (explicit). Defaults to False.
+            internal_server_error_500: Add 500 Internal Server Error (explicit). None means "use profile/default".
 
         Example:
             ```python
@@ -268,24 +268,42 @@ class Errors(Mapping):
                 stacklevel=2,
             )
 
-        use_unauthorized = unauthorized_401 or unauthorized
-        use_forbidden = forbidden_403 or forbidden
-        use_internal = internal_server_error_500 or internal_server_error
-        val_422 = (
-            validation_error_422
-            if validation_error_422 is not None
-            else validation_error
-        )
+        if unauthorized_401 is not None:
+            use_unauthorized = unauthorized_401
+        elif unauthorized:
+            use_unauthorized = True
+        elif profile is not None:
+            use_unauthorized = profile.unauthorized_401
+        else:
+            use_unauthorized = False
 
-        if profile is not None:
-            if not use_unauthorized:
-                use_unauthorized = profile.unauthorized_401
-            if not use_forbidden:
-                use_forbidden = profile.forbidden_403
-            if not use_internal:
-                use_internal = profile.internal_server_error_500
-            if val_422 is None:
-                val_422 = profile.validation_error_422
+        if forbidden_403 is not None:
+            use_forbidden = forbidden_403
+        elif forbidden:
+            use_forbidden = True
+        elif profile is not None:
+            use_forbidden = profile.forbidden_403
+        else:
+            use_forbidden = False
+
+        if internal_server_error_500 is not None:
+            use_internal = internal_server_error_500
+        elif internal_server_error:
+            use_internal = True
+        elif profile is not None:
+            use_internal = profile.internal_server_error_500
+        else:
+            use_internal = False
+
+        val_422: Optional[bool]
+        if validation_error_422 is not None:
+            val_422 = validation_error_422
+        elif validation_error is not None:
+            val_422 = validation_error
+        elif profile is not None:
+            val_422 = profile.validation_error_422
+        else:
+            val_422 = None
 
         # Add standard errors
         if use_unauthorized:

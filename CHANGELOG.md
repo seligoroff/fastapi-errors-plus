@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-07-08
+
+Semver: **patch** — profile override fix, migration guidance, pitfalls docs, and typing/lint cleanup.
+
+### Fixed
+
+- **Profile precedence:** explicit `False` in `unauthorized_401` / `forbidden_403` / `internal_server_error_500` now correctly overrides `ErrorProfile` defaults.
+- **Typing cleanup:** mypy configuration and helper return typing adjusted to pass strict checks used in this repo.
+
+### Added
+
+- **Migration readiness guide:** `localdocs/notes/migration-0.9-to-1.0.md`.
+- **README updates (EN/RU):** "1.0 Readiness" checklist and "Common Pitfalls" section.
+
+### Changed
+
+- New explicit-status kwargs now use tri-state semantics (`Optional[bool] = None`) to distinguish "not provided" from explicit `False`.
+
+---
+
 ## [0.9.0] - 2026-07-07
 
 Semver: **minor** — `ErrorProfile`, first-class `model`/`schema` on DTOs, merge refactor, protocol validation, deprecation wave for legacy API.

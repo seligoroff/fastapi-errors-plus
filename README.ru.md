@@ -67,6 +67,17 @@ def delete_item(id: int):
     pass
 ```
 
+## Подготовка к 1.0 (для пользователей 0.9.x)
+
+Перед обновлением до **1.0** закройте чеклист:
+
+- Замените legacy kwargs `unauthorized`, `forbidden`, `validation_error`, `internal_server_error`
+  на `unauthorized_401`, `forbidden_403`, `validation_error_422`, `internal_server_error_500`.
+- Явно задайте `validation_error_422` (или через `ErrorProfile`) для endpoint/profile.
+- Прогоните diff OpenAPI в CI и проверьте, что 401/403/422/500 остались ожидаемыми.
+
+Подробный чеклист: [localdocs/notes/migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md).
+
 ## Возможности
 
 ### 1. Стандартные HTTP статусы через флаги
@@ -651,23 +662,23 @@ Errors(
     forbidden: bool = False,
     validation_error: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
     internal_server_error: bool = False,
-    unauthorized_401: bool = False,
-    forbidden_403: bool = False,
+    unauthorized_401: Optional[bool] = None,
+    forbidden_403: Optional[bool] = None,
     validation_error_422: Optional[bool] = None,  # None (по умолчанию) => True (FastAPI валидирует все параметры)
-    internal_server_error_500: bool = False,
+    internal_server_error_500: Optional[bool] = None,
     profile: Optional[ErrorProfile] = None,
 )
 ```
 
 **Параметры:**
 - `*errors`: Произвольные ошибки как dict или объекты ErrorDTO
-- `unauthorized_401`: Добавить ошибку 401 Unauthorized (рекомендуется, явно). По умолчанию `False`.
-- `forbidden_403`: Добавить ошибку 403 Forbidden (рекомендуется, явно). По умолчанию `False`.
+- `unauthorized_401`: Добавить ошибку 401 Unauthorized (рекомендуется, явно). `None` = использовать профиль/дефолт.
+- `forbidden_403`: Добавить ошибку 403 Forbidden (рекомендуется, явно). `None` = использовать профиль/дефолт.
 - `validation_error_422`: Добавить ошибку 422 Unprocessable Entity (рекомендуется, явно). 
   - `None` (по умолчанию): Добавить 422 (True по умолчанию, FastAPI валидирует все параметры)
   - `False`: Явно отключить 422
   - `True`: Явно включить 422
-- `internal_server_error_500`: Добавить ошибку 500 Internal Server Error (рекомендуется, явно). По умолчанию `False`.
+- `internal_server_error_500`: Добавить ошибку 500 Internal Server Error (рекомендуется, явно). `None` = использовать профиль/дефолт.
 - `unauthorized`: Добавить ошибку 401 Unauthorized (устаревший, для обратной совместимости). По умолчанию `False`.
 - `forbidden`: Добавить ошибку 403 Forbidden (устаревший, для обратной совместимости). По умолчанию `False`.
 - `validation_error`: Добавить ошибку 422 Unprocessable Entity (устаревший, для обратной совместимости). 
@@ -739,10 +750,10 @@ Frozen-дефолты для стандартных HTTP-флагов.
 
 ```python
 ErrorProfile(
-    unauthorized_401: bool = False,
-    forbidden_403: bool = False,
+    unauthorized_401: Optional[bool] = None,
+    forbidden_403: Optional[bool] = None,
     validation_error_422: Optional[bool] = None,
-    internal_server_error_500: bool = False,
+    internal_server_error_500: Optional[bool] = None,
 )
 ```
 
@@ -1004,6 +1015,16 @@ async def get_item(
 - Не находит все реальные ошибки в эндпоинте автоматически
 - Не анализирует код для обнаружения ошибок
 - Не гарантирует полноту списков ошибок
+
+## Частые ловушки (Common Pitfalls)
+
+- **Расхождение runtime и документации**: исключение может реально бросаться, но отсутствовать в
+  `responses=Errors(...)`; OpenAPI это автоматически не поймает.
+- **Исключения из `Depends()`**: auth/permission зависимости могут кидать 401/403, но если не
+  указать их в `Errors(...)`, спецификация будет неполной.
+- **Избыточная документация**: `Errors(...)` может описывать ответы, которые endpoint фактически не возвращает.
+- **Сюрприз при переходе на 1.0**: если вы полагаетесь на implicit 422, закрепите его явно через
+  `validation_error_422=True/False` до миграции.
 
 ## Вклад в проект
 
