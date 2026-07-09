@@ -11,6 +11,29 @@ STANDARD_FLAG_EXAMPLE_KEYS: Dict[int, str] = {
     500: "StandardInternalServerError",
 }
 
+# OpenAPI Media Type: merge example/examples separately; other keys win from extras.
+OPENAPI_MEDIA_TYPE_EXAMPLE_KEYS = frozenset({"example", "examples"})
+
+
+def unique_key(examples: Dict[str, Any], base: str) -> str:
+    """Return a key not present in *examples*, using ``{base}_2``, ``{base}_3``, …"""
+    key = base
+    i = 2
+    while key in examples:
+        key = f"{base}_{i}"
+        i += 1
+    return key
+
+
+def merge_openapi_application_json_non_example(
+    existing_json: Dict[str, Any],
+    response_json: Dict[str, Any],
+) -> None:
+    """Apply schema/encoding/extra fields from incoming media type; incoming overwrites on conflict."""
+    for key, value in response_json.items():
+        if key not in OPENAPI_MEDIA_TYPE_EXAMPLE_KEYS:
+            existing_json[key] = value
+
 
 def standard_flag_example_key(status_code: int) -> str:
     """Return the examples-map key for a standard flag on *status_code*."""
@@ -81,6 +104,6 @@ def merge_examples_map(
             # Backwards compatible fallback: silent overwrite.
             examples[key] = copy.deepcopy(value)
             continue
-        unique_key = unique_key_fn(examples, key)
-        examples[unique_key] = copy.deepcopy(value)
+        resolved_key = unique_key_fn(examples, key)
+        examples[resolved_key] = copy.deepcopy(value)
 

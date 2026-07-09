@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-07-09
+
+Semver: **patch** — internal refactor of `Errors` merge/flag/DTO logic; **no public API or OpenAPI output changes**.
+
+### Added
+
+- **Internal modules:** `_dto_adapter`, `_descriptions`, `_flags_and_profile`, `_merge_engine`, `_compat` (shared `HTTP_422` constant).
+- **`merge_utils`:** `unique_key()`, `merge_openapi_application_json_non_example()`, `OPENAPI_MEDIA_TYPE_EXAMPLE_KEYS`.
+- **Regression tests:** characterization snapshots (`tests/test_errors_characterization.py`, C01–C12), deprecation contract tests (`tests/test_errors_deprecation_warnings.py`, W01–W04), `tests/test_merge_utils.py`.
+
+### Changed
+
+- **`errors.py`:** thin `Mapping` facade (~263 lines, down from ~626); orchestrates flag resolution and merge via internal modules.
+- **`merge_utils.merge_examples_map`:** collision key local renamed to `resolved_key` (avoids shadowing module-level `unique_key`).
+
+### Notes for upgraders
+
+- Public imports (`Errors`, `ErrorProfile`, DTO types) unchanged.
+- Documented OpenAPI `responses` shape and merge semantics (including 0.9.2 invariants) are unchanged.
+- Private helpers (`Errors._unique_key`, etc.) kept as thin delegates where tests depended on them.
+
 ## [0.9.2] - 2026-07-08
 
 Semver: **patch** — fix OpenAPI responses merge correctness and README syntax validation.
