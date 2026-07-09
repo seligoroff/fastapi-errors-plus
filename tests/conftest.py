@@ -12,8 +12,8 @@ class SimpleErrorDTO:
         self.message = message
         self._example_value = example_value
 
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI."""
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate examples for OpenAPI."""
         return {
             self.message: {
                 "value": self._example_value,

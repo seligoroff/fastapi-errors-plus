@@ -20,8 +20,8 @@ class DomainException(Exception):
     status_code: int
     message: str
 
-    def to_example(self) -> Dict[str, Any]:
-        """Generate example for OpenAPI."""
+    def to_examples(self) -> Dict[str, Any]:
+        """Generate examples for OpenAPI."""
         return {
             self.message: {
                 "value": {"detail": self.message},
@@ -71,10 +71,10 @@ class MockItemAccessDeniedError(DomainException):
 @router.get(
     "/standard-flags",
     responses=Errors(
-        unauthorized=True,
-        forbidden=True,
-        validation_error=True,
-        internal_server_error=True,
+        unauthorized_401=True,
+        forbidden_403=True,
+        validation_error_422=True,
+        internal_server_error_500=True,
     ),
 )
 def get_standard_flags():
@@ -147,8 +147,8 @@ def get_resource_error_dto(resource_id: int):
             message="Not found",
             example_value={"detail": "Item not found"},
         ),
-        unauthorized=True,  # Flag
-        forbidden=True,  # Flag
+        unauthorized_401=True,  # Flag
+        forbidden_403=True,  # Flag
     ),
 )
 def create_item_mixed(item_id: int):
@@ -181,7 +181,7 @@ def update_item_merge_examples(item_id: int):
 @router.get(
     "/empty-errors",
     responses=Errors(
-        validation_error=False
+        validation_error_422=False
     ),  # Explicitly disable 422 for endpoint without parameters
 )
 def get_empty_errors():
@@ -208,7 +208,7 @@ def get_empty_errors():
                 },
             },
         },
-        unauthorized=True,  # Flag adds basic 401
+        unauthorized_401=True,  # Flag adds basic 401
     ),
 )
 def delete_item_merge_flag_dict(item_id: int):
@@ -273,8 +273,8 @@ def delete_item_standard_error_dto(item_id: int):
                 "InvalidToken": "Invalid token",
             },
         ),
-        validation_error=True,
-        internal_server_error=True,
+        validation_error_422=True,
+        internal_server_error_500=True,
     ),
 )
 def create_item_mixed_base_dto(item_id: int):

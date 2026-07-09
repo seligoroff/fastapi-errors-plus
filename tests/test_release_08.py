@@ -89,16 +89,11 @@ class TestRelease08ErrorDoc:
 
 @pytest.mark.unit
 class TestRelease08ToExamples:
-    """#11: to_examples() canonical; to_example() deprecated on bundled DTOs."""
+    """to_examples() is the canonical bundled DTO API."""
 
     def test_base_error_dto_to_examples(self):
         dto = BaseErrorDTO(status_code=404, message="Missing")
         assert "Missing" in dto.to_examples()
-
-    def test_base_error_dto_to_example_deprecated(self):
-        dto = BaseErrorDTO(status_code=404, message="Missing")
-        with pytest.warns(DeprecationWarning, match="to_examples"):
-            dto.to_example()
 
     def test_standard_error_dto_summary(self):
         dto = StandardErrorDTO(

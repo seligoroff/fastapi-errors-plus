@@ -3,16 +3,7 @@
 from __future__ import annotations
 
 import copy
-import warnings
 from typing import Any, Dict, Optional
-
-
-def example_defining_class(cls: type, method: str) -> Optional[type]:
-    """First class in MRO that defines *method* in its own ``__dict__``."""
-    for base in cls.__mro__:
-        if method in base.__dict__:
-            return base
-    return None
 
 
 def pick_error_dto_application_json_extra(
@@ -44,32 +35,17 @@ def pick_error_dto_model(error_dto: Any) -> Any:
 
 
 def collect_dto_examples(error_dto: Any) -> Dict[str, Any]:
-    """Return a deep copy of examples from an ErrorDTO.
-
-    Resolution walks the MRO: the most specific ``to_examples`` wins over an
-    inherited ``to_example`` on the same branch; legacy ``to_example`` only on
-    the defining class emits a single actionable deprecation warning.
-    """
+    """Return a deep copy of examples from an ErrorDTO via ``to_examples()``."""
     cls = type(error_dto)
-    examples_cls = example_defining_class(cls, "to_examples")
-    legacy_cls = example_defining_class(cls, "to_example")
+    has_to_examples = callable(getattr(error_dto, "to_examples", None))
+    has_to_example = callable(getattr(error_dto, "to_example", None))
 
-    if examples_cls is not None:
-        use_examples = legacy_cls is None or cls.__mro__.index(
-            examples_cls
-        ) <= cls.__mro__.index(legacy_cls)
-        if use_examples:
-            return copy.deepcopy(error_dto.to_examples())
+    if has_to_examples:
+        return copy.deepcopy(error_dto.to_examples())
 
-    if legacy_cls is not None:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore", DeprecationWarning)
-            result = error_dto.to_example()
-        warnings.warn(
-            f"{cls.__name__} implements deprecated to_example(); use to_examples() instead.",
-            DeprecationWarning,
-            stacklevel=3,
+    if has_to_example:
+        raise TypeError(
+            f"{cls.__name__} implements deprecated to_example(); use to_examples() instead."
         )
-        return copy.deepcopy(result)
 
-    raise TypeError(f"{cls.__name__} has no to_examples() or to_example()")
+    raise TypeError(f"{cls.__name__} has no to_examples() method")

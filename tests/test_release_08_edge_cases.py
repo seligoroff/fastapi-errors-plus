@@ -1,14 +1,13 @@
 """Additional tests for release 0.8.0 (protocol, example normalization, descriptions)."""
 
 import importlib
-import warnings
 
 import pytest
 from fastapi import status
 
 from fastapi_errors_plus import BaseErrorDTO, ErrorDoc, Errors
 from fastapi_errors_plus.example_utils import _normalize_example_specs
-from fastapi_errors_plus.protocol import ErrorDTO, LegacyErrorDTO
+from fastapi_errors_plus.protocol import ErrorDTO
 
 
 @pytest.fixture
@@ -63,14 +62,6 @@ class TestResponseDescriptions:
     def test_unknown_status_code_gets_fallback_description(self):
         errors = Errors({999: {"model": dict}}, validation_error_422=False)
         assert errors[999]["description"] == "HTTP 999"
-
-
-@pytest.mark.unit
-class TestErrorDocLegacy:
-    def test_error_doc_to_example_emits_deprecation(self):
-        doc = ErrorDoc(status_code=404, message="Not found")
-        with pytest.warns(DeprecationWarning, match="to_examples"):
-            doc.to_example()
 
 
 @pytest.mark.unit
@@ -202,7 +193,7 @@ class TestHttp422ImportFallback:
 
 @pytest.mark.unit
 class TestErrorDTOProtocols:
-    def test_to_examples_only_satisfies_error_dto(self):
+    def test_to_examples_satisfies_error_dto(self):
         class Modern:
             status_code = 404
             message = "Not found"
@@ -211,9 +202,8 @@ class TestErrorDTOProtocols:
                 return {"n": {"value": {"detail": "x"}}}
 
         assert isinstance(Modern(), ErrorDTO)
-        assert not isinstance(Modern(), LegacyErrorDTO)
 
-    def test_to_example_only_is_legacy_protocol(self):
+    def test_to_example_only_does_not_satisfy_error_dto(self):
         class Legacy:
             status_code = 404
             message = "Not found"
@@ -221,13 +211,12 @@ class TestErrorDTOProtocols:
             def to_example(self):
                 return {"n": {"value": {"detail": "x"}}}
 
-        assert isinstance(Legacy(), LegacyErrorDTO)
         assert not isinstance(Legacy(), ErrorDTO)
 
 
 @pytest.mark.unit
-class TestLegacyDeprecationWarnings:
-    def test_single_deprecation_when_errors_wraps_legacy_dto(self):
+class TestLegacyToExampleRemoved:
+    def test_errors_rejects_legacy_to_example_only_dto(self):
         class LegacyOnly:
             status_code = 409
             message = "Conflict"
@@ -235,9 +224,5 @@ class TestLegacyDeprecationWarnings:
             def to_example(self):
                 return {"C": {"value": {"detail": "c"}}}
 
-        with warnings.catch_warnings(record=True) as caught:
-            warnings.simplefilter("always", DeprecationWarning)
+        with pytest.raises(TypeError, match="to_examples"):
             Errors(LegacyOnly(), validation_error_422=False)
-        dep = [w for w in caught if issubclass(w.category, DeprecationWarning)]
-        assert len(dep) == 1
-        assert "LegacyOnly" in str(dep[0].message)

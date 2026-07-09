@@ -110,19 +110,19 @@ class TestFlagExampleKeyRegistry:
 
 
 @pytest.mark.unit
-class TestLegacyKwargsDeprecation:
-    def test_legacy_unauthorized_warns(self):
-        with pytest.warns(DeprecationWarning, match="unauthorized_401"):
+class TestLegacyKwargsRemoved:
+    def test_legacy_unauthorized_raises(self):
+        with pytest.raises(TypeError, match="unauthorized_401"):
             Errors(unauthorized=True, validation_error_422=False)
 
-    def test_implicit_422_default_warns(self):
+    def test_no_implicit_422_warning(self):
         with warnings.catch_warnings(record=True) as caught:
             warnings.simplefilter("always", DeprecationWarning)
             Errors(unauthorized_401=True)
-        dep = [w for w in caught if "validation_error_422" in str(w.message)]
-        assert len(dep) == 1
+        dep = [w for w in caught if "Implicit validation_error_422" in str(w.message)]
+        assert not dep
 
-    def test_explicit_422_false_silences_implicit_warning(self):
+    def test_explicit_422_false_without_warning(self):
         with warnings.catch_warnings():
             warnings.simplefilter("error", DeprecationWarning)
             Errors(unauthorized_401=True, validation_error_422=False)
@@ -130,11 +130,11 @@ class TestLegacyKwargsDeprecation:
 
 @pytest.mark.unit
 class TestProtocolValidation:
-    def test_non_callable_to_example_raises_before_collect(self):
+    def test_non_callable_to_examples_raises_before_collect(self):
         class Bad:
             status_code = 404
             message = "x"
-            to_example = "nope"
+            to_examples = "nope"
 
-        with pytest.raises(TypeError, match="to_examples or to_example"):
+        with pytest.raises(TypeError, match="to_examples"):
             Errors(Bad(), validation_error_422=False)

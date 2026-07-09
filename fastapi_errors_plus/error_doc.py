@@ -1,6 +1,5 @@
 """Declarative error documentation for OpenAPI."""
 
-import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -55,11 +54,3 @@ class ErrorDoc:
         value = self.body if self.body is not None else {"detail": self.message}
         return {key: {"value": value}}
 
-    def to_example(self) -> Dict[str, Any]:
-        """Deprecated alias for :meth:`to_examples`."""
-        warnings.warn(
-            "to_example() is deprecated; use to_examples() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.to_examples()

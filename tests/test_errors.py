@@ -12,47 +12,6 @@ from fastapi_errors_plus import Errors
 class TestErrorsStandardFlags:
     """Tests for standard HTTP status flags."""
 
-    def test_unauthorized_flag(self):
-        """Test generation of 401 Unauthorized from flag."""
-        errors = Errors(unauthorized=True)
-        responses = errors
-
-        assert status.HTTP_401_UNAUTHORIZED in responses
-        assert responses[status.HTTP_401_UNAUTHORIZED]["description"] == "Unauthorized"
-        assert responses[status.HTTP_401_UNAUTHORIZED]["content"]["application/json"][
-            "example"
-        ] == {"detail": "Unauthorized"}
-
-    def test_forbidden_flag(self):
-        """Test generation of 403 Forbidden from flag."""
-        errors = Errors(forbidden=True)
-        responses = errors
-
-        assert status.HTTP_403_FORBIDDEN in responses
-        assert responses[status.HTTP_403_FORBIDDEN]["description"] == "Forbidden"
-
-    def test_validation_error_flag(self):
-        """Test generation of 422 Validation Error from flag."""
-        errors = Errors(validation_error=True)
-        responses = errors
-
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
-        assert (
-            responses[status.HTTP_422_UNPROCESSABLE_CONTENT]["description"]
-            == "Validation Error"
-        )
-
-    def test_internal_server_error_flag(self):
-        """Test generation of 500 Internal Server Error from flag."""
-        errors = Errors(internal_server_error=True)
-        responses = errors
-
-        assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
-        assert (
-            responses[status.HTTP_500_INTERNAL_SERVER_ERROR]["description"]
-            == "Internal Server Error"
-        )
-
     def test_unauthorized_401_flag(self):
         """Test generation of 401 Unauthorized from explicit flag."""
         errors = Errors(unauthorized_401=True)
@@ -91,10 +50,10 @@ class TestErrorsStandardFlags:
             == "Internal Server Error"
         )
 
-    def test_new_flags_priority_over_old(self):
-        """Test that new explicit flags work independently of old flags."""
+    def test_explicit_flags_disable_422(self):
+        """Explicit *_422=False disables implicit 422."""
         errors = Errors(
-            unauthorized_401=True, forbidden_403=True, validation_error=False
+            unauthorized_401=True, forbidden_403=True, validation_error_422=False
         )
         responses = errors
 
@@ -102,48 +61,13 @@ class TestErrorsStandardFlags:
         assert status.HTTP_403_FORBIDDEN in responses
         assert len(responses) == 2
 
-    def test_backward_compatibility_old_flags_still_work(self):
-        """Test that old flags continue to work for backward compatibility."""
-        errors = Errors(unauthorized=True, forbidden=True)
-        responses = errors
-
-        assert status.HTTP_401_UNAUTHORIZED in responses
-        assert status.HTTP_403_FORBIDDEN in responses
-
-    def test_mixed_old_and_new_flags(self):
-        """Test mixing old and new flags (both should work)."""
-        errors = Errors(
-            unauthorized=True,  # Old
-            forbidden_403=True,  # New
-            validation_error_422=True,  # New
-            internal_server_error=True,  # Old
-        )
-        responses = errors
-
-        assert status.HTTP_401_UNAUTHORIZED in responses
-        assert status.HTTP_403_FORBIDDEN in responses
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
-        assert status.HTTP_500_INTERNAL_SERVER_ERROR in responses
-        assert len(responses) == 4
-
-    def test_both_old_and_new_same_flag(self):
-        """Test that both old and new flag for same status code work (OR logic)."""
-        errors = Errors(
-            unauthorized=True, unauthorized_401=True, validation_error=False
-        )
-        responses = errors
-
-        # Should only have one 401 entry (not duplicated)
-        assert status.HTTP_401_UNAUTHORIZED in responses
-        assert len(responses) == 1
-
     def test_multiple_flags(self):
         """Test generation of multiple standard flags."""
         errors = Errors(
-            unauthorized=True,
-            forbidden=True,
-            validation_error=True,
-            internal_server_error=True,
+            unauthorized_401=True,
+            forbidden_403=True,
+            validation_error_422=True,
+            internal_server_error_500=True,
         )
         responses = errors
 
@@ -198,7 +122,7 @@ class TestErrorsDict:
                     },
                 },
             },
-            validation_error=False,  # Disable 422 for this test
+            validation_error_422=False,  # Disable 422 for this test
         )
         responses = errors
 
@@ -263,7 +187,7 @@ class TestErrorsErrorDTO:
             status_code=409, message="Conflict", detail="Conflict"
         )
         errors = Errors(
-            error1, error2, validation_error=False
+            error1, error2, validation_error_422=False
         )  # Disable 422 for this test
         responses = errors
 
@@ -306,7 +230,7 @@ class TestErrorsMergeExamples:
                     },
                 },
             },
-            unauthorized=True,  # Also adds 401
+            unauthorized_401=True,  # Also adds 401
         )
         responses = errors
 
@@ -325,7 +249,7 @@ class TestErrorsMergeExamples:
         )
         errors = Errors(
             error_dto,
-            unauthorized=True,  # Also adds 401
+            unauthorized_401=True,  # Also adds 401
         )
         responses = errors
 
@@ -358,7 +282,7 @@ class TestErrorsOpenApiSchemaMerge:
                     },
                 },
             },
-            validation_error=False,
+            validation_error_422=False,
         )
         aj = errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]
         assert aj["schema"] == schema_frag
@@ -386,7 +310,7 @@ class TestErrorsOpenApiSchemaMerge:
                 },
             },
             error_dto,
-            validation_error=False,
+            validation_error_422=False,
         )
         aj = errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]
         assert aj["schema"] == schema_frag
@@ -405,7 +329,7 @@ class TestErrorsOpenApiSchemaMerge:
                     "content": {"application/json": {"schema": {"type": "object"}}},
                 },
             },
-            validation_error=False,
+            validation_error_422=False,
         )
         assert (
             errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]["schema"][
@@ -421,7 +345,7 @@ class TestErrorsOpenApiSchemaMerge:
                     "content": {"application/json": {"encoding": "utf-8"}},
                 },
             },
-            validation_error=False,
+            validation_error_422=False,
         )
         assert (
             errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"]["encoding"]
@@ -447,7 +371,7 @@ class TestErrorsOpenApiSchemaMerge:
                 "schema": adr_schema,
             },
         )
-        errors = Errors(err, validation_error=False)
+        errors = Errors(err, validation_error_422=False)
         aj = errors[status.HTTP_409_CONFLICT]["content"]["application/json"]
         assert aj["schema"] == adr_schema
         assert aj["examples"]["BusinessRule"]["value"]["detail"] == "BusinessRule"
@@ -467,7 +391,7 @@ class TestErrorsOpenApiSchemaMerge:
                     "content": {"application/json": {"schema": {"type": "object"}}},
                 },
             },
-            validation_error=False,
+            validation_error_422=False,
         )
         schema = errors[status.HTTP_404_NOT_FOUND]["content"]["application/json"][
             "schema"
@@ -480,7 +404,7 @@ class TestErrorsOpenApiSchemaMerge:
             message = "Denied"
             openapi_json_extras = {"schema": {"type": "string"}}
 
-            def to_example(self):  # type: ignore[no-untyped-def]
+            def to_examples(self):  # type: ignore[no-untyped-def]
                 return {
                     self.message: {"value": {"detail": "no"}},
                 }
@@ -488,7 +412,7 @@ class TestErrorsOpenApiSchemaMerge:
             def to_openapi_json_media_type_extras(self):  # type: ignore[no-untyped-def]
                 return {"schema": {"description": "from method"}}
 
-        errors = Errors(CustomDTO(), validation_error=False)
+        errors = Errors(CustomDTO(), validation_error_422=False)
         assert (
             errors[403]["content"]["application/json"]["schema"]["description"]
             == "from method"
@@ -516,9 +440,9 @@ class TestErrorsMixed:
                 },
             },
             error_dto,
-            unauthorized=True,
-            forbidden=True,
-            validation_error=False,  # Disable 422 for this test
+            unauthorized_401=True,
+            forbidden_403=True,
+            validation_error_422=False,  # Disable 422 for this test
         )
         responses = errors
 
@@ -534,18 +458,32 @@ class TestErrorsEdgeCases:
     """Tests for edge cases."""
 
     def test_empty_errors(self):
-        """Test empty Errors instance (validation_error=True by default)."""
+        """Test empty Errors instance (no implicit 422)."""
         errors = Errors()
         responses = errors
 
         assert isinstance(responses, Mapping)
-        # validation_error=True by default, so 422 should be present
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
-        assert len(responses) == 1
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
+        assert len(responses) == 0
 
-    def test_validation_error_default_true(self):
-        """Test that validation_error is True by default."""
+    def test_validation_error_422_default_false(self):
+        """Test that validation_error_422 is False by default."""
         errors = Errors()
+        responses = errors
+
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
+
+    def test_validation_error_can_be_disabled(self):
+        """Test that validation_error_422 can be explicitly set to False."""
+        errors = Errors(validation_error_422=False)
+        responses = errors
+
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
+        assert len(responses) == 0
+
+    def test_validation_error_422_explicit_true(self):
+        """Test that validation_error_422=True adds 422."""
+        errors = Errors(validation_error_422=True)
         responses = errors
 
         assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
@@ -554,21 +492,6 @@ class TestErrorsEdgeCases:
             == "Validation Error"
         )
 
-    def test_validation_error_can_be_disabled(self):
-        """Test that validation_error can be explicitly set to False."""
-        errors = Errors(validation_error=False)
-        responses = errors
-
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
-        assert len(responses) == 0
-
-    def test_validation_error_422_default_true(self):
-        """Test that validation_error_422 is True by default."""
-        errors = Errors()
-        responses = errors
-
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
-
     def test_validation_error_422_can_be_disabled(self):
         """Test that validation_error_422 can be explicitly set to False."""
         errors = Errors(validation_error_422=False)
@@ -576,37 +499,32 @@ class TestErrorsEdgeCases:
 
         assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
 
-    def test_validation_error_explicit_true_still_works(self):
-        """Test that explicit validation_error=True still works (backward compatibility)."""
-        errors = Errors(validation_error=True)
+    def test_validation_error_422_from_profile(self):
+        """Test validation_error_422=True via ErrorProfile."""
+        from fastapi_errors_plus import ErrorProfile
+
+        errors = Errors(profile=ErrorProfile(validation_error_422=True))
         responses = errors
 
         assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses
 
-    def test_validation_error_old_and_new_flags(self):
-        """Test that both old and new validation_error flags work together."""
-        errors = Errors(validation_error=False, validation_error_422=False)
-        responses = errors
-
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
-
     def test_validation_error_with_other_errors(self):
-        """Test validation_error=True by default with other errors."""
+        """Test other flags do not implicitly add 422."""
         errors = Errors(unauthorized_401=True, forbidden_403=True)
         responses = errors
 
         assert status.HTTP_401_UNAUTHORIZED in responses
         assert status.HTTP_403_FORBIDDEN in responses
-        assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses  # Default True
-        assert len(responses) == 3
+        assert status.HTTP_422_UNPROCESSABLE_CONTENT not in responses
+        assert len(responses) == 2
 
     def test_no_flags_no_errors(self):
         """Test Errors with all flags explicitly set to False."""
         errors = Errors(
-            unauthorized=False,
-            forbidden=False,
-            validation_error=False,  # Explicitly disabled
-            internal_server_error=False,
+            unauthorized_401=False,
+            forbidden_403=False,
+            validation_error_422=False,
+            internal_server_error_500=False,
         )
         responses = errors
 
@@ -693,7 +611,7 @@ class TestErrorsEdgeCases:
     def test_errors_is_mapping(self):
         """Test that Errors implements Mapping protocol."""
         errors = Errors(
-            unauthorized=True, validation_error=False
+            unauthorized_401=True, validation_error_422=False
         )  # Disable 422 to test only 401
 
         assert isinstance(errors, Mapping)
@@ -828,8 +746,8 @@ class TestErrorsValidation:
 
         assert status.HTTP_404_NOT_FOUND in responses
 
-    def test_missing_to_example_raises_typeerror(self):
-        """Test that object without to_example raises TypeError."""
+    def test_missing_to_examples_raises_typeerror(self):
+        """Test that object without to_examples() raises TypeError."""
 
         class BadObject:
             status_code = 404
@@ -838,8 +756,21 @@ class TestErrorsValidation:
         with pytest.raises(TypeError) as exc_info:
             Errors(BadObject())
 
-        assert "to_example" in str(exc_info.value)
+        assert "to_examples" in str(exc_info.value)
         assert "BadObject" in str(exc_info.value)
+
+    def test_legacy_to_example_only_raises_typeerror(self):
+        """DTO with only to_example() must raise TypeError (1.0)."""
+
+        class LegacyOnly:
+            status_code = 404
+            message = "Test"
+
+            def to_example(self):
+                return {"Test": {"value": {"detail": "test"}}}
+
+        with pytest.raises(TypeError, match="to_examples"):
+            Errors(LegacyOnly(), validation_error_422=False)
 
     def test_missing_status_code_raises_typeerror(self):
         """Test that object without status_code raises TypeError."""
@@ -847,7 +778,7 @@ class TestErrorsValidation:
         class BadObject:
             message = "Test"
 
-            def to_example(self):
+            def to_examples(self):
                 return {"test": {"value": {"detail": "test"}}}
 
         with pytest.raises(TypeError) as exc_info:
@@ -862,7 +793,7 @@ class TestErrorsValidation:
         class BadObject:
             status_code = 404
 
-            def to_example(self):
+            def to_examples(self):
                 return {"test": {"value": {"detail": "test"}}}
 
         with pytest.raises(TypeError) as exc_info:
@@ -871,18 +802,18 @@ class TestErrorsValidation:
         assert "message" in str(exc_info.value)
         assert "BadObject" in str(exc_info.value)
 
-    def test_non_callable_to_example_raises_typeerror(self):
-        """Test that non-callable to_example raises TypeError."""
+    def test_non_callable_to_examples_raises_typeerror(self):
+        """Test that non-callable to_examples raises TypeError."""
 
         class BadObject:
             status_code = 404
             message = "Test"
-            to_example = "not a method"
+            to_examples = "not a method"
 
         with pytest.raises(TypeError) as exc_info:
             Errors(BadObject())
 
-        assert "to_example" in str(exc_info.value)
+        assert "to_examples" in str(exc_info.value)
         assert "BadObject" in str(exc_info.value)
 
     def test_string_raises_typeerror(self):
@@ -906,7 +837,7 @@ class TestErrorsValidation:
         error_msg = str(exc_info.value)
         assert "status_code" in error_msg
         assert "message" in error_msg
-        assert "to_example" in error_msg
+        assert "to_examples" in error_msg
         assert "BadObject" in error_msg
 
 
@@ -983,8 +914,8 @@ class TestPydanticIntegration:
             status_code: int = Field(..., ge=400, le=599)
             message: str = Field(..., min_length=1)
 
-            def to_example(self) -> Dict[str, Any]:
-                """Generate example for OpenAPI."""
+            def to_examples(self) -> Dict[str, Any]:
+                """Generate examples for OpenAPI."""
                 return {
                     self.message: {
                         "value": {"detail": self.message},
@@ -998,7 +929,7 @@ class TestPydanticIntegration:
         )
 
         # Use with Errors class
-        errors = Errors(error, validation_error=False)
+        errors = Errors(error, validation_error_422=False)
         responses = errors
 
         assert status.HTTP_404_NOT_FOUND in responses
@@ -1019,8 +950,8 @@ class TestPydanticIntegration:
             message: str = Field(..., min_length=1)
             error_code: Optional[str] = Field(None, description="Internal error code")
 
-            def to_example(self) -> Dict[str, Any]:
-                """Generate example for OpenAPI."""
+            def to_examples(self) -> Dict[str, Any]:
+                """Generate examples for OpenAPI."""
                 example = {"detail": self.message}
                 if self.error_code:
                     example["error_code"] = self.error_code
@@ -1039,7 +970,7 @@ class TestPydanticIntegration:
         )
 
         # Use with Errors class
-        errors = Errors(error, validation_error=False)
+        errors = Errors(error, validation_error_422=False)
         responses = errors
 
         assert status.HTTP_422_UNPROCESSABLE_CONTENT in responses

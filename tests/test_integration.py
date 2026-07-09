@@ -392,16 +392,16 @@ class TestDomainExceptionEndpoint:
         # Check that it implements ErrorDTO protocol
         assert hasattr(error_instance, "status_code")
         assert hasattr(error_instance, "message")
-        assert hasattr(error_instance, "to_example")
-        assert callable(error_instance.to_example)
+        assert hasattr(error_instance, "to_examples")
+        assert callable(error_instance.to_examples)
 
         # Check values
         assert error_instance.status_code == 404
         assert error_instance.message == "Test item not found"
         assert error_instance.item_id == "test_id"
 
-        # Check to_example() works
-        example = error_instance.to_example()
+        # Check to_examples() works
+        example = error_instance.to_examples()
         assert isinstance(example, dict)
         assert "Test item not found" in example
 

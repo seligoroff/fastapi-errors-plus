@@ -17,8 +17,7 @@ Structured error bodies that need OpenAPI JSON ``schema`` (e.g. ADR fields
 ``BaseErrorDTO`` / ``StandardErrorDTO`` / ``ErrorDoc`` or
 ``to_openapi_json_media_type_extras()`` on custom DTOs.
 
-Implement ``to_examples()`` (canonical); legacy ``to_example()`` still works
-at runtime with a deprecation warning.
+Implement ``to_examples()`` on custom DTOs and domain exceptions.
 """
 
 from typing import Dict, Any

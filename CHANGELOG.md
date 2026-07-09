@@ -7,6 +7,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-09
+
+Semver: **major** — removes APIs deprecated in 0.9.x; OpenAPI output changes when callers relied on implicit 422 or legacy kwargs.
+
+### Removed
+
+- **Legacy `Errors` kwargs:** `unauthorized`, `forbidden`, `validation_error`, `internal_server_error` — `TypeError` with migration hint (`unauthorized_401=`, etc.).
+- **Runtime `to_example()` support:** DTOs with only `to_example()` raise `TypeError`; use `to_examples()`.
+- **`to_example()` on bundled DTOs:** removed from `BaseErrorDTO`, `StandardErrorDTO`, `ErrorDoc`.
+- **Public typing helpers:** `LegacyErrorDTO`, `ErrorDTOLike` removed from `fastapi_errors_plus` exports.
+
+### Changed
+
+- **`validation_error_422` default:** `None` without `ErrorProfile` → **do not add 422** (was implicit `True` + `DeprecationWarning` in 0.9.x).
+- **`Errors()` with no args:** empty `Mapping` (len 0) unless positional errors or explicit flags/profile enable statuses.
+- **`ErrorDTO` protocol docs:** `to_examples()` is the only required example method.
+
+### Migration
+
+Upgrade path: [localdocs/notes/migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md).
+
+#### Legacy kwargs
+
+```python
+# before (0.9.x)
+Errors(unauthorized=True, forbidden=True, validation_error=False)
+
+# after (1.0)
+Errors(unauthorized_401=True, forbidden_403=True, validation_error_422=False)
+```
+
+#### Implicit 422
+
+```python
+# before — Errors() added 422 with DeprecationWarning
+Errors()
+
+# after — opt in explicitly or via profile
+Errors(validation_error_422=True)
+# or
+Errors(profile=ErrorProfile(validation_error_422=True))
+```
+
+#### `to_example()` → `to_examples()`
+
+```python
+# before
+class MyError:
+    status_code = 404
+    message = "Not found"
+
+    def to_example(self):
+        return {"Not found": {"value": {"detail": "Not found"}}}
+
+# after
+class MyError:
+    status_code = 404
+    message = "Not found"
+
+    def to_examples(self):
+        return {"Not found": {"value": {"detail": "Not found"}}}
+```
+
+#### OpenAPI impact
+
+- Endpoints that used `Errors()` without flags may **lose** the documented 422 block — add `validation_error_422=True` where 422 should appear in the spec.
+- Run OpenAPI diff in CI after upgrading; see migration guide checklist.
+
+### Added
+
+- Negative tests for removed legacy kwargs and `to_example()`-only DTOs.
+
+### Notes for upgraders from 0.9.3
+
+- Internal refactor in 0.9.3 is unchanged; 1.0 is the breaking release announced by 0.9 deprecations.
+- Pin `fastapi-errors-plus<1` until migration is complete.
+
 ## [0.9.3] - 2026-07-09
 
 Semver: **patch** — internal refactor of `Errors` merge/flag/DTO logic; **no public API or OpenAPI output changes**.

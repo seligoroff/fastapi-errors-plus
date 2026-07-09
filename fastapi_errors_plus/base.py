@@ -1,6 +1,5 @@
 """Base implementations of ErrorDTO protocol for convenience."""
 
-import warnings
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
@@ -50,7 +49,7 @@ class BaseErrorDTO:
     openapi_json_extras: Optional[Dict[str, Any]] = field(default=None)
     """Optional OpenAPI fragment under ``content['application/json']`` besides examples,
     typically ``{\"schema\": ...}`` or ``encoding``. Do **not** put ``example`` / ``examples``
-    here — use :meth:`to_example`. Arbitrary implementations may instead implement
+    here — use :meth:`to_examples`. Arbitrary implementations may instead implement
     :meth:`to_openapi_json_media_type_extras`; that return value wins over this attribute."""
 
     def to_examples(self) -> Dict[str, Any]:
@@ -60,16 +59,6 @@ class BaseErrorDTO:
                 "value": {"detail": self.message},
             },
         }
-
-    def to_example(self) -> Dict[str, Any]:
-        """Deprecated alias for :meth:`to_examples`."""
-        warnings.warn(
-            "to_example() is deprecated; use to_examples() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.to_examples()
-
 
 @dataclass
 class StandardErrorDTO(BaseErrorDTO):
@@ -113,11 +102,3 @@ class StandardErrorDTO(BaseErrorDTO):
         assert self.examples is not None
         return _normalize_example_specs(self.examples)
 
-    def to_example(self) -> Dict[str, Any]:
-        """Deprecated alias for :meth:`to_examples`."""
-        warnings.warn(
-            "to_example() is deprecated; use to_examples() instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self.to_examples()

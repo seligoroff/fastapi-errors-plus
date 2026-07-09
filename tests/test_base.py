@@ -20,14 +20,14 @@ class TestBaseErrorDTO:
         assert error.status_code == 404
         assert error.message == "Not found"
 
-    def test_to_example_single_example(self):
-        """Test to_example() returns correct format for single example."""
+    def test_to_examples_single_example(self):
+        """Test to_examples() returns correct format for single example."""
         error = BaseErrorDTO(
             status_code=404,
             message="Notification not found",
         )
 
-        result = error.to_example()
+        result = error.to_examples()
 
         assert isinstance(result, dict)
         assert "Notification not found" in result
@@ -35,14 +35,14 @@ class TestBaseErrorDTO:
             "value": {"detail": "Notification not found"},
         }
 
-    def test_to_example_format(self):
-        """Test to_example() returns correct OpenAPI format."""
+    def test_to_examples_format(self):
+        """Test to_examples() returns correct OpenAPI format."""
         error = BaseErrorDTO(
             status_code=500,
             message="Internal server error",
         )
 
-        result = error.to_example()
+        result = error.to_examples()
 
         # Check structure
         assert len(result) == 1
@@ -87,7 +87,7 @@ class TestBaseErrorDTO:
             message="Conflict",
             openapi_json_extras={"schema": adr_schema},
         )
-        merged = Errors(error, validation_error=False)
+        merged = Errors(error, validation_error_422=False)
         aj = merged[409]["content"]["application/json"]
         assert aj["schema"] == adr_schema
         assert "Conflict" in aj["examples"]
@@ -100,7 +100,7 @@ class TestBaseErrorDTO:
             examples={"One": "msg"},
             openapi_json_extras={"schema": adr_schema},
         )
-        merged = Errors(error, validation_error=False)
+        merged = Errors(error, validation_error_422=False)
         aj = merged[422]["content"]["application/json"]
         assert aj["schema"] == adr_schema
         assert "One" in aj["examples"]
@@ -139,8 +139,8 @@ class TestStandardErrorDTO:
         assert error.examples is not None
         assert error.examples == {"Forbidden": "Forbidden"}
 
-    def test_to_example_multiple_examples(self):
-        """Test to_example() returns correct format for multiple examples."""
+    def test_to_examples_multiple_examples(self):
+        """Test to_examples() returns correct format for multiple examples."""
         error = StandardErrorDTO(
             status_code=401,
             message="Unauthorized",
@@ -150,7 +150,7 @@ class TestStandardErrorDTO:
             },
         )
 
-        result = error.to_example()
+        result = error.to_examples()
 
         assert isinstance(result, dict)
         assert len(result) == 2
@@ -164,14 +164,14 @@ class TestStandardErrorDTO:
             "value": {"detail": "Сессия пользователя не была найдена."},
         }
 
-    def test_to_example_default_example(self):
-        """Test to_example() with default example (when examples not provided)."""
+    def test_to_examples_default_example(self):
+        """Test to_examples() with default example (when examples not provided)."""
         error = StandardErrorDTO(
             status_code=403,
             message="Forbidden",
         )
 
-        result = error.to_example()
+        result = error.to_examples()
 
         assert isinstance(result, dict)
         assert len(result) == 1
@@ -233,7 +233,7 @@ class TestStandardErrorDTO:
             },
         )
 
-        errors = Errors(error, unauthorized=True)
+        errors = Errors(error, unauthorized_401=True)
         responses = errors
 
         assert status.HTTP_401_UNAUTHORIZED in responses
@@ -257,7 +257,7 @@ class TestBaseErrorDTOInheritance:
         class CustomErrorDTO(BaseErrorDTO):
             code: str = ""
 
-            def to_example(self):
+            def to_examples(self):
                 return {
                     f"{self.code}_{self.message}": {
                         "value": {
@@ -273,7 +273,7 @@ class TestBaseErrorDTOInheritance:
             code="ERR_404",
         )
 
-        result = error.to_example()
+        result = error.to_examples()
         assert "ERR_404_Not found" in result
         assert result["ERR_404_Not found"]["value"]["code"] == "ERR_404"
 
@@ -283,7 +283,7 @@ class TestBaseErrorDTOInheritance:
 
         @dataclass
         class CustomErrorDTO(BaseErrorDTO):
-            def to_example(self):
+            def to_examples(self):
                 return {
                     "Custom": {
                         "value": {"detail": self.message},
@@ -317,7 +317,7 @@ class TestBaseErrorDTOCompatibility:
             status_code = 404
             message = "Not found"
 
-            def to_example(self):
+            def to_examples(self):
                 return {
                     "Not found": {
                         "value": {"detail": "Not found"},
@@ -342,7 +342,7 @@ class TestBaseErrorDTOCompatibility:
             status_code = 500
             message = "Server error"
 
-            def to_example(self):
+            def to_examples(self):
                 return {
                     "Server error": {
                         "value": {"detail": "Server error"},

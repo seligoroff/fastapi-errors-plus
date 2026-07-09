@@ -7,7 +7,6 @@ from typing import Any, Callable, Dict, List
 from fastapi import status
 
 from fastapi_errors_plus import ErrorProfile, Errors
-from fastapi_errors_plus.errors import _HTTP_422
 
 from tests.conftest import SimpleErrorDTO
 
@@ -195,16 +194,7 @@ def build_c12() -> Errors:
     return Errors(unauthorized_401=True, validation_error_422=False)
 
 
-EXPECTED_C01: GoldenMapping = {
-    _HTTP_422: {
-        "description": "Validation Error",
-        "content": {
-            "application/json": {
-                "example": {"detail": "Validation error"},
-            },
-        },
-    },
-}
+EXPECTED_C01: GoldenMapping = {}
 
 EXPECTED_C02: GoldenMapping = {
     status.HTTP_401_UNAUTHORIZED: {

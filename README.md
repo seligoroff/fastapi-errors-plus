@@ -4,12 +4,14 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-138-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-154-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Universal library for documenting errors in FastAPI endpoints.
 
 > [Русская версия README](https://github.com/seligoroff/fastapi-errors-plus/blob/main/README.ru.md)
+
+**Docs policy:** substantive documentation changes are applied to both `README.md` (English) and `README.ru.md` (Russian).
 
 ## Philosophy
 
@@ -58,7 +60,7 @@ router = APIRouter()
         }},
         unauthorized_401=True,      # 401 Unauthorized (explicit)
         forbidden_403=True,          # 403 Forbidden (explicit)
-        # validation_error_422=True - not needed, defaults to True
+        # validation_error_422=True - opt in when documenting 422
     ),
 )
 def delete_item(id: int):
@@ -67,109 +69,125 @@ def delete_item(id: int):
     pass
 ```
 
-## 1.0 Readiness (for 0.9.x users)
+## Recommended Path
 
-Before upgrading to **1.0**, complete this checklist:
+For new endpoints, prefer **`ErrorDoc`** or **domain exceptions** implementing **`ErrorDTO`**. Use **`ErrorProfile`** for project-wide defaults. **`BaseErrorDTO`** / **`StandardErrorDTO`**, boolean flags (`*_401`, …), and raw OpenAPI dicts are composable in one `Errors(...)` call.
 
-- Replace legacy kwargs: `unauthorized`, `forbidden`, `validation_error`, `internal_server_error`
-  with `unauthorized_401`, `forbidden_403`, `validation_error_422`, `internal_server_error_500`.
-- Set `validation_error_422` explicitly (or via `ErrorProfile`) for each endpoint/profile.
-- Run OpenAPI diff in CI and confirm expected 401/403/422/500 blocks are still present.
+### ErrorDoc
 
-Detailed checklist: [localdocs/notes/migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md).
-
-## Features
-
-### 1. Standard HTTP Status Flags
-
-Use boolean flags for common HTTP status codes:
-
-**Recommended (explicit status codes):**
-- `unauthorized_401=True` → 401 Unauthorized
-- `forbidden_403=True` → 403 Forbidden
-- `validation_error_422=True` → 422 Unprocessable Entity (defaults to `True`)
-- `internal_server_error_500=True` → 500 Internal Server Error
-
-**Legacy (deprecated in 0.9, removal in 1.0):**
-- `unauthorized=True` → 401 Unauthorized
-- `forbidden=True` → 403 Forbidden
-- `validation_error=True` → 422 Unprocessable Entity
-- `internal_server_error=True` → 500 Internal Server Error
-
-**Note on 422:** If you omit both `validation_error` and `validation_error_422`, the library still adds **422** today but emits a **`DeprecationWarning`** — the default will become **`False` in 1.0**. For ADR-style APIs, set `validation_error_422=False` explicitly (or use **`ErrorProfile`** below): this disables only the library-managed 422 entry in `Errors`, while FastAPI may still return its own auto-422 `HTTPValidationError` for parameter/body validation. Make sure your contract tests treat auto-422 from FastAPI and documented 422 in `Errors` as separate concerns.
+For arbitrary response bodies (ADR `code` / `detail` / `context`, not only `detail` strings), use **`ErrorDoc`**:
 
 ```python
-@router.get(
-    "/protected",
-    responses=Errors(
-        unauthorized_401=True,  # Explicit: 401 is visible
-        forbidden_403=True,      # Explicit: 403 is visible
-    ),
+from fastapi_errors_plus import ErrorDoc, Errors
+
+permission_denied = ErrorDoc(
+    status_code=403,
+    message="Insufficient permissions",
+    examples={
+        "MissingRole": {
+            "summary": "User lacks required role",
+            "value": {
+                "code": "FORBIDDEN",
+                "detail": "Role admin required",
+            },
+        },
+    },
+    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
 )
-def get_protected():
-    """Protected endpoint."""
-    pass
+
+@router.delete("/{id}", responses=Errors(permission_denied))
+def delete_item(id: int):
+    ...
 ```
 
-**Why explicit flags?** The new flags with status codes (`_401`, `_403`, etc.) make it immediately clear which HTTP status code corresponds to each flag, improving code readability without needing to remember the mapping.
+A **plain dict** as an example value is treated as the full response **body** unless it looks like an OpenAPI Example Object (keys only among `value`, `summary`, `description`, `externalValue`).
 
-### 2. Dict-based Errors
-
-Use standard FastAPI `responses` dict format for custom errors:
+Optional **`model=`** (Pydantic model on the outer response object for FastAPI `$ref` registration) and **`schema=`** (JSON Schema under `application/json`) avoid a separate status `dict` for typed error bodies:
 
 ```python
-@router.post(
-    "/items",
-    responses=Errors(
-        {
-            409: {
-                "description": "Conflict",
-                "content": {
-                    "application/json": {
-                        "example": {"detail": "Item already exists"},
-                    },
-                },
-            },
-        }
-    ),
+from fastapi_errors_plus import ErrorDoc, Errors
+
+conflict = ErrorDoc(
+    status_code=409,
+    message="BusinessRule",
+    model=ApplicationJsonError,  # optional Pydantic model
+    schema=ADR_ERROR_BODY_SCHEMA,  # or raw JSON Schema
+    body={"code": "RULE_VIOLATION", "detail": "Item exists"},
 )
+
+@router.post("/items", responses=Errors(conflict, validation_error_422=False))
 def create_item():
-    """Create an item."""
-    pass
+    ...
 ```
 
-### 3. ErrorDTO Protocol
+### Domain exceptions as ErrorDTO
 
-Use objects implementing the `ErrorDTO` protocol for project compatibility:
+Make domain exceptions implement **`ErrorDTO`** so runtime errors and OpenAPI docs share one type:
 
 ```python
-from fastapi_errors_plus import Errors, ErrorDTO
+# domain/exceptions.py
+from typing import Dict, Any
 
-class MyErrorDTO:
+class DomainException(Exception):
+    """Base exception implementing ErrorDTO protocol."""
+    status_code: int
+    message: str
+
+    def to_examples(self) -> Dict[str, Any]:
+        return {self.message: {"value": {"detail": self.message}}}
+
+    @classmethod
+    def for_openapi(cls):
+        """Returns instance for OpenAPI documentation."""
+        return cls()
+
+class NotificationNotFoundError(DomainException):
     status_code = 404
-    message = "Not found"
-    
-    def to_examples(self):
-        return {
-            "Not found": {
-                "value": {"detail": "Not found"},
-            },
-        }
+    message = "Notification not found"
 
-@router.get(
-    "/resource/{id}",
+    def __init__(self, notification_id: str = ""):
+        self.notification_id = notification_id
+        super().__init__(self.message)
+
+    @classmethod
+    def for_openapi(cls):
+        return cls(notification_id="example_id")
+
+# In endpoint
+@router.delete(
+    "/{notificationId}",
     responses=Errors(
-        MyErrorDTO(),
+        NotificationNotFoundError.for_openapi(),
     ),
 )
-def get_resource(id: int):
-    """Get a resource."""
-    pass
+async def delete_notification(notification_id: str):
+    if not notification:
+        raise NotificationNotFoundError(notification_id)
 ```
 
-### 4. BaseErrorDTO and StandardErrorDTO (Recommended)
+See [examples/domain_exceptions.py](examples/domain_exceptions.py) for a full walkthrough.
 
-For convenience, the library provides ready-to-use implementations:
+### ErrorProfile
+
+Project-wide defaults (frozen — not mutated by endpoint calls):
+
+```python
+from fastapi_errors_plus import ErrorDoc, ErrorProfile, Errors
+
+ADR = ErrorProfile(
+    validation_error_422=False,
+    unauthorized_401=True,
+    internal_server_error_500=True,
+)
+
+@router.post("/items", responses=Errors(business_conflict, profile=ADR))
+def create_item():
+    ...
+```
+
+Explicit `Errors` keyword flags override profile values. Positional dict/DTO errors are merged after profile-driven standard statuses.
+
+### Bundled DTOs (`BaseErrorDTO`, `StandardErrorDTO`)
 
 #### BaseErrorDTO
 
@@ -218,7 +236,7 @@ business_conflict = BaseErrorDTO(
 
 router = APIRouter()
 
-@router.post("/items", responses=Errors(business_conflict, validation_error=False))
+@router.post("/items", responses=Errors(business_conflict, validation_error_422=False))
 def create_item():
     ...
 ```
@@ -255,7 +273,7 @@ forbidden_error = StandardErrorDTO(
     responses=Errors(
         unauthorized_error,
         forbidden_error,
-        # validation_error=True - not needed, defaults to True
+        # validation_error_422=True - opt in when documenting 422
     ),
 )
 def delete_item(id: int):
@@ -263,84 +281,105 @@ def delete_item(id: int):
     pass
 ```
 
-**Benefits:**
-- No need to write ErrorDTO classes from scratch
-- Correct implementation out of the box
-- Reusable across all endpoints
-- Supports inheritance for custom logic
-
 `examples` values may be **strings** (shorthand for `{"detail": text}`) or full OpenAPI Example Objects with **`summary`** and **`value`**.
 
-#### ErrorDoc
+### Standard HTTP flags
 
-For arbitrary response bodies (ADR `code` / `detail` / `context`, not only `detail` strings), use **`ErrorDoc`**:
+Use boolean flags for common HTTP status codes:
+
+- `unauthorized_401=True` → 401 Unauthorized
+- `forbidden_403=True` → 403 Forbidden
+- `validation_error_422=True` → 422 Unprocessable Entity (opt-in; default is **not** to add 422)
+- `internal_server_error_500=True` → 500 Internal Server Error
+
+**Note on 422:** By default, `Errors()` does **not** add a 422 response. Pass `validation_error_422=True` (or set `ErrorProfile(validation_error_422=True)`) for endpoints where you want a documented validation error. For ADR-style APIs that document domain error bodies instead of generic 422, keep `validation_error_422=False` explicitly or via profile. This disables only the **library-managed** 422 entry; FastAPI may still return auto-422 `HTTPValidationError` for invalid parameters — treat those as separate concerns in contract tests.
 
 ```python
-from fastapi_errors_plus import ErrorDoc, Errors
+@router.get(
+    "/protected",
+    responses=Errors(
+        unauthorized_401=True,
+        forbidden_403=True,
+    ),
+)
+def get_protected():
+    """Protected endpoint."""
+    pass
+```
 
-permission_denied = ErrorDoc(
-    status_code=403,
-    message="Insufficient permissions",
-    examples={
-        "MissingRole": {
-            "summary": "User lacks required role",
-            "value": {
-                "code": "FORBIDDEN",
-                "detail": "Role admin required",
+### Dict-based errors
+
+Use standard FastAPI `responses` dict format for custom errors:
+
+```python
+@router.post(
+    "/items",
+    responses=Errors(
+        {
+            409: {
+                "description": "Conflict",
+                "content": {
+                    "application/json": {
+                        "example": {"detail": "Item already exists"},
+                    },
+                },
             },
-        },
-    },
-    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
+        }
+    ),
 )
-
-@router.delete("/{id}", responses=Errors(permission_denied))
-def delete_item(id: int):
-    ...
+def create_item():
+    """Create an item."""
+    pass
 ```
 
-A **plain dict** as an example value is treated as the full response **body** unless it looks like an OpenAPI Example Object (keys only among `value`, `summary`, `description`, `externalValue`).
+### Custom `ErrorDTO` implementations
 
-Optional **`model=`** (Pydantic model on the outer response object for FastAPI `$ref` registration) and **`schema=`** (JSON Schema under `application/json`) avoid a separate status `dict` for typed error bodies:
+The canonical **`ErrorDTO`** protocol:
 
 ```python
-from fastapi_errors_plus import ErrorDoc, Errors
+from typing import Protocol, Dict, Any
 
-conflict = ErrorDoc(
-    status_code=409,
-    message="BusinessRule",
-    model=ApplicationJsonError,  # optional Pydantic model
-    schema=ADR_ERROR_BODY_SCHEMA,  # or raw JSON Schema
-    body={"code": "RULE_VIOLATION", "detail": "Item exists"},
-)
+class ErrorDTO(Protocol):
+    status_code: int
+    message: str
 
-@router.post("/items", responses=Errors(conflict, validation_error_422=False))
-def create_item():
-    ...
+    def to_examples(self) -> Dict[str, Any]:
+        """OpenAPI ``examples`` map: {"Key": {"value": {...}, "summary": "..."}}."""
+        ...
 ```
 
-#### ErrorProfile
-
-Project-wide defaults (frozen — not mutated by endpoint calls):
+Any class implementing this protocol (structural typing) can be used with `Errors()`:
 
 ```python
-from fastapi_errors_plus import ErrorDoc, ErrorProfile, Errors
+from fastapi_errors_plus import Errors, ErrorDTO
 
-ADR = ErrorProfile(
-    validation_error_422=False,
-    unauthorized_401=True,
-    internal_server_error_500=True,
+class MyErrorDTO:
+    status_code = 404
+    message = "Not found"
+
+    def to_examples(self):
+        return {
+            "Not found": {
+                "value": {"detail": "Not found"},
+            },
+        }
+
+@router.get(
+    "/resource/{id}",
+    responses=Errors(
+        MyErrorDTO(),
+    ),
 )
-
-@router.post("/items", responses=Errors(business_conflict, profile=ADR))
-def create_item():
-    ...
+def get_resource(id: int):
+    """Get a resource."""
+    pass
 ```
 
-Explicit `Errors` keyword flags override profile values. Positional dict/DTO errors are merged after profile-driven standard statuses.
+**Use Protocol (structural typing)** when you already have error DTOs or need custom logic. **Use `ErrorDoc` / bundled DTOs** when starting fresh or documenting multiple examples per status. Both can be mixed in one `Errors()` call.
 
-### 5. Mixed Usage
+Optional on custom DTOs: **`openapi_json_extras`** or **`to_openapi_json_media_type_extras()`** for `schema` / `encoding` beside examples.
 
-Combine flags, dict, and ErrorDTO:
+### Combining flags, dicts, and DTOs
 
 ```python
 @router.post(
@@ -354,10 +393,10 @@ Combine flags, dict, and ErrorDTO:
                 },
             },
         }},
-        MyErrorDTO(),  # ErrorDTO
-        unauthorized=True,  # Flag
-        forbidden=True,  # Flag
-        # validation_error=True - not needed, defaults to True
+        MyErrorDTO(),
+        unauthorized_401=True,
+        forbidden_403=True,
+        # validation_error_422=True - opt in when documenting 422
     ),
 )
 def create_item_mixed(id: int):
@@ -365,7 +404,7 @@ def create_item_mixed(id: int):
     pass
 ```
 
-### 6. Merging Examples
+### Merging examples and schemas
 
 Multiple errors with the same status code are automatically merged:
 
@@ -382,17 +421,13 @@ def update_item(id: int):
     pass
 ```
 
-The OpenAPI spec will contain both examples under the 404 status code.
+When merging the same status code: a **dict** wins for **`description`** over bundled standard-flag wording; an **ErrorDTO**'s `message` can replace the description only while it still matches the library's default label for that code.
 
-When merging the same status code: a **dict** wins for **`description`** over the bundled standard-flag wording; an **ErrorDTO**’s `message` can replace the description only while it still matches the library’s default label for that code (custom descriptions coming from dicts are not overwritten by DTOs).
-
-Under `content["application/json"]`, `example` / `examples` are merged as before; any **other** OpenAPI Media Type fields from a later **`dict`** (for example **`schema`**, **`encoding`**) are **copied in** as well—the later dict wins on conflict (**same rule as `description`**).  
-
-You can combine one **`ErrorDTO`** (examples) with a **`dict`** for the **same numeric status code** listing only **`schema`** (or other non-example keys) without repeating the boilerplate examples block:
+Under `content["application/json"]`, `example` / `examples` are merged; later **`dict`** entries can add **`schema`**, **`encoding`**, etc. Combine one **`ErrorDTO`** with a **`dict`** for the same status listing only non-example keys:
 
 ```python
 Errors(
-    conflict_error_doc,   # implements ErrorDTO, e.g. .for_openapi() for ADR-shaped examples
+    conflict_error_doc,
     {
         status.HTTP_409_CONFLICT: {
             "description": "Business rule violation",
@@ -413,56 +448,9 @@ Errors(
 )
 ```
 
-Order matters only for overlaps: whichever **`dict`** is applied **later** in the **`Errors`** argument list overwrites **`schema`** / **`encoding`** (and **`model`** on the outer response dict, if provided) when the same keys appear again.
+### Pydantic (optional)
 
-## ErrorDTO Protocol
-
-The canonical **`ErrorDTO`** protocol defines the interface for error objects compatible with the library:
-
-```python
-from typing import Protocol, Dict, Any
-
-class ErrorDTO(Protocol):
-    status_code: int
-    message: str
-    
-    def to_examples(self) -> Dict[str, Any]:
-        """OpenAPI ``examples`` map: {"Key": {"value": {...}, "summary": "..."}}."""
-        ...
-```
-
-Any class implementing this protocol (through structural typing) can be used with `Errors()`.
-
-**Legacy migration:** classes that only define **`to_example()`** still work at **runtime** (`DeprecationWarning` once per class per `Errors()` call). For static typing use **`LegacyErrorDTO`** or the union alias **`ErrorDTOLike`** (`ErrorDTO | LegacyErrorDTO`).
-
-**Best Practice:** For maximum clarity, consider making your domain exceptions implement the ErrorDTO protocol directly. See [Best Practice: Connecting Exceptions and ErrorDTO](#best-practice-connecting-exceptions-and-errordto) for details.
-
-### When to Use Protocol vs BaseErrorDTO
-
-Optional on custom DTOs (OpenAPI media-type extras without duplicating a status `dict`):
-
-- attribute **`openapi_json_extras`**: fragment for **`content["application/json"]`** (often `{"schema": ...}` — not for `example` / `examples`);
-- or method **`to_openapi_json_media_type_extras() -> Optional[dict]`** — when non-empty, overrides **`openapi_json_extras`**.
-
-**Use Protocol (structural typing)** when:
-- Your project already has error DTOs that implement the protocol
-- You need maximum flexibility and custom implementations
-- You want to keep your existing error infrastructure
-
-**Use BaseErrorDTO/StandardErrorDTO/ErrorDoc** when:
-- Starting a new project or adding error documentation
-- You want a ready-to-use implementation without boilerplate
-- You need multiple examples for standard HTTP errors (401, 403, etc.)
-
-Both approaches work together — you can mix them in the same `Errors()` call!
-
-## Using Pydantic with ErrorDTO
-
-**Note:** Pydantic is **not required** to use this library. This section is for projects that already use Pydantic and want to integrate it with the ErrorDTO protocol.
-
-Since the library uses structural typing (Protocol), any class that implements the required attributes (`status_code`, `message`, `to_examples()`) will work, including Pydantic models. Legacy `to_example()` is still accepted at runtime.
-
-### Simple Pydantic Model as ErrorDTO
+Pydantic is **not required**. If you already use it, models with `status_code`, `message`, and `to_examples()` work through structural typing:
 
 ```python
 from pydantic import BaseModel, Field
@@ -470,178 +458,31 @@ from fastapi_errors_plus import Errors
 from typing import Dict, Any
 
 class PydanticErrorDTO(BaseModel):
-    """Pydantic model implementing ErrorDTO Protocol."""
-    status_code: int = Field(..., ge=400, le=599, description="HTTP status code")
-    message: str = Field(..., min_length=1, description="Error message")
-    
+    status_code: int = Field(..., ge=400, le=599)
+    message: str = Field(..., min_length=1)
+
     def to_examples(self) -> Dict[str, Any]:
-        """Generate examples for OpenAPI."""
-        return {
-            self.message: {
-                "value": {"detail": self.message},
-            },
-        }
+        return {self.message: {"value": {"detail": self.message}}}
 
-# Usage
-notification_error = PydanticErrorDTO(
-    status_code=404,
-    message="Notification not found",
-)
-
-@router.delete(
-    "/{id}",
-    responses=Errors(notification_error),
-)
+@router.delete("/{id}", responses=Errors(PydanticErrorDTO(status_code=404, message="Not found")))
 def delete_item(id: int):
     pass
 ```
 
-**Benefits:**
-- Runtime validation through Pydantic
-- Type safety
-- Automatic field documentation
-- Works with ErrorDTO Protocol through structural typing
+### Existing project DTOs
 
-### Complex ErrorDTO with Pydantic
-
-For errors with additional fields:
+If your project already has error DTOs (like `ApiErrorDTO`), they work when they implement **`ErrorDTO`**:
 
 ```python
-from pydantic import BaseModel, Field
-from fastapi_errors_plus import Errors
-from typing import Dict, Any, Optional
-
-class DetailedErrorDTO(BaseModel):
-    """Pydantic model for errors with additional fields."""
-    status_code: int = Field(..., ge=400, le=599)
-    message: str = Field(..., min_length=1)
-    error_code: Optional[str] = Field(None, description="Internal error code")
-    timestamp: Optional[str] = Field(None, description="Error timestamp")
-    
-    def to_examples(self) -> Dict[str, Any]:
-        """Generate examples for OpenAPI."""
-        example = {"detail": self.message}
-        if self.error_code:
-            example["error_code"] = self.error_code
-        if self.timestamp:
-            example["timestamp"] = self.timestamp
-        
-        return {
-            self.message: {
-                "value": example,
-            },
-        }
-
-# Usage
-validation_error = DetailedErrorDTO(
-    status_code=422,
-    message="Validation failed",
-    error_code="VALIDATION_ERROR",
-    timestamp="2025-01-15T10:30:00Z",
-)
-```
-
-**When to use Pydantic with ErrorDTO:**
-- Your project already uses Pydantic extensively
-- You need runtime validation for error objects
-- You want automatic field documentation
-- You have complex error structures with multiple fields
-
-**When not to use Pydantic:**
-- Your project doesn't use Pydantic (use `BaseErrorDTO` or `StandardErrorDTO` instead)
-- You need simple error objects (dataclasses are sufficient)
-- You want to keep dependencies minimal
-
-## Best Practice: Connecting Exceptions and ErrorDTO
-
-### Problem
-
-It's not always clear which exception corresponds to which ErrorDTO:
-
-```python
-# Not clear which exception this documents
-responses=Errors(notification_not_found_error)
-```
-
-### Solution: Domain Exception as ErrorDTO
-
-**Recommended approach** — make your exceptions implement ErrorDTO protocol:
-
-```python
-# domain/exceptions.py
-from typing import Dict, Any
-
-class DomainException(Exception):
-    """Base exception implementing ErrorDTO protocol."""
-    status_code: int
-    message: str
-    
-    def to_examples(self) -> Dict[str, Any]:
-        return {self.message: {"value": {"detail": self.message}}}
-    
-    @classmethod
-    def for_openapi(cls):
-        """Returns instance for OpenAPI documentation."""
-        return cls()
-
-class NotificationNotFoundError(DomainException):
-    status_code = 404
-    message = "Notification not found"
-    
-    def __init__(self, notification_id: str = ""):
-        self.notification_id = notification_id
-        super().__init__(self.message)
-    
-    @classmethod
-    def for_openapi(cls):
-        return cls(notification_id="example_id")
-
-# In endpoint
-@router.delete(
-    "/{notificationId}",
-    responses=Errors(
-        NotificationNotFoundError.for_openapi(),  # Clear connection!
-    ),
-)
-async def delete_notification(notification_id: str):
-    if not notification:
-        raise NotificationNotFoundError(notification_id)  # Same exception!
-```
-
-**Benefits:**
-- Exception and ErrorDTO are one class
-- Clear connection visible in endpoint
-- No duplication
-- Type-safe
-- Works with any project architecture
-
-See [examples/domain_exceptions.py](examples/domain_exceptions.py) for complete example.
-
-## Compatibility with Existing Projects
-
-If your project already has error DTOs (like `ApiErrorDTO`), they can work with `fastapi-errors-plus` if they implement the `ErrorDTO` protocol (or legacy `to_example()` during migration):
-
-```python
-# Your existing ApiErrorDTO
 @dataclass
 class ApiErrorDTO:
     status_code: int
     message: str
-    
-    def to_examples(self) -> dict:
-        return {
-            self.message: {
-                "value": {"detail": self.message},
-            },
-        }
 
-# Works directly with fastapi-errors-plus!
-@router.delete(
-    "/{id}",
-    responses=Errors(
-        ApiErrorDTO(status_code=404, message="Not found"),
-    ),
-)
+    def to_examples(self) -> dict:
+        return {self.message: {"value": {"detail": self.message}}}
+
+@router.delete("/{id}", responses=Errors(ApiErrorDTO(status_code=404, message="Not found")))
 def delete_item(id: int):
     pass
 ```
@@ -661,10 +502,6 @@ class Errors:
     def __init__(
         self,
         *errors: Union[Dict[int, Dict[str, Any]], "ErrorDTO"],
-        unauthorized: bool = False,
-        forbidden: bool = False,
-        validation_error: Optional[bool] = None,
-        internal_server_error: bool = False,
         unauthorized_401: Optional[bool] = None,
         forbidden_403: Optional[bool] = None,
         validation_error_422: Optional[bool] = None,
@@ -676,25 +513,16 @@ class Errors:
 
 **Parameters:**
 - `*errors`: Arbitrary errors as dict or ErrorDTO objects
-- `unauthorized_401`: Add 401 Unauthorized error (recommended, explicit). `None` means "use profile/default".
-- `forbidden_403`: Add 403 Forbidden error (recommended, explicit). `None` means "use profile/default".
-- `validation_error_422`: Add 422 Unprocessable Entity error (recommended, explicit). 
-  - `None` (default): Add 422 (True by default, FastAPI validates all parameters)
+- `unauthorized_401`: Add 401 Unauthorized error. `None` means "use profile/default" (default: do not add).
+- `forbidden_403`: Add 403 Forbidden error. `None` means "use profile/default" (default: do not add).
+- `validation_error_422`: Add 422 Unprocessable Entity error.
+  - `None` (default): Do not add 422 unless enabled via `ErrorProfile`
   - `False`: Explicitly disable 422
   - `True`: Explicitly enable 422
-- `internal_server_error_500`: Add 500 Internal Server Error (recommended, explicit). `None` means "use profile/default".
-- `unauthorized`: Add 401 Unauthorized error (legacy, for backward compatibility). Defaults to `False`.
-- `forbidden`: Add 403 Forbidden error (legacy, for backward compatibility). Defaults to `False`.
-- `validation_error`: Add 422 Unprocessable Entity error (legacy, for backward compatibility). 
-  - `None` (default): Add 422 (True by default, FastAPI validates all parameters)
-  - `False`: Explicitly disable 422
-  - `True`: Explicitly enable 422
-- `internal_server_error`: Add 500 Internal Server Error (legacy, **deprecated** in 0.9). Defaults to `False`.
+- `internal_server_error_500`: Add 500 Internal Server Error. `None` means "use profile/default" (default: do not add).
 - `profile`: Optional **`ErrorProfile`** — project defaults; explicit kwargs override profile.
 
-**Deprecation (0.9+):** legacy kwargs above emit `DeprecationWarning` (removal in **1.0**). Omitting both `validation_error` and `validation_error_422` still adds 422 but warns; default becomes **`False` in 1.0**.
-
-**422 behaviour:** pass `validation_error_422=False` for endpoints without request-body validation or ADR-style error bodies. Use **`ErrorProfile`** to set this once per project.
+**422 behaviour:** pass `validation_error_422=True` for endpoints with validated parameters/body where you want a documented 422 block. Use **`ErrorProfile`** to set defaults once per project.
 
 **Returns:**
 - A dict-like `Mapping[int, …]` suitable for FastAPI’s `responses` / OpenAPI
@@ -723,12 +551,7 @@ Protocol for error objects compatible with the library.
 **Required methods:**
 - `to_examples() -> Dict[str, Any]` — OpenAPI `examples` map for `application/json`
 
-During `Errors(...)` initialization, non-`dict` objects in `*errors` missing `status_code`, `message`, or a callable **`to_examples()`** / **`to_example()`** raise **`TypeError`** naming what was missing.
-
-### `LegacyErrorDTO` / `ErrorDTOLike`
-
-- **`LegacyErrorDTO`** — typing helper for classes that only implement deprecated **`to_example()`**.
-- **`ErrorDTOLike`** — `Union[ErrorDTO, LegacyErrorDTO]` for transitional annotations.
+During `Errors(...)` initialization, non-`dict` objects in `*errors` missing `status_code`, `message`, or a callable **`to_examples()`** raise **`TypeError`** naming what was missing.
 
 ### `ErrorDoc`
 
@@ -829,203 +652,52 @@ error = StandardErrorDTO(
 )
 ```
 
-## Examples
+## Migration from 0.9
 
-### Example 1: Standard FastAPI Project
+Upgrading from **0.9.x**? See **[CHANGELOG.md](CHANGELOG.md)** § 1.0.0 and the full guide **[migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md)**.
 
-```python
-from fastapi import APIRouter
-from fastapi_errors_plus import Errors
+### Breaking changes (summary)
 
-router = APIRouter()
+| Area | 0.9.x | 1.0 |
+|------|-------|-----|
+| `unauthorized`, `forbidden`, `validation_error`, `internal_server_error` | Deprecated, accepted | **`TypeError`** — use `*_401` / `*_403` / `*_422` / `*_500` |
+| `Errors()` without 422 kwargs | Implicit 422 + warning | **No 422** |
+| DTO with only `to_example()` | Works + warning | **`TypeError`** — use `to_examples()` |
+| `LegacyErrorDTO`, `ErrorDTOLike` | Exported | **Removed** |
 
-@router.delete(
-    "/{id}",
-    responses=Errors(
-        {404: {
-            "description": "Not found",
-            "content": {
-                "application/json": {
-                    "example": {"detail": "Item not found"},
-                },
-            },
-        }},
-        unauthorized=True,
-        forbidden=True,
-    ),
-)
-def delete_item(id: int):
-    """Delete an item."""
-    pass
-```
-
-### Example 2: Project with ErrorDTO
+### Legacy kwargs (removed)
 
 ```python
-from fastapi import APIRouter
-from fastapi_errors_plus import Errors
-from api.exceptions.dto import notification_not_found_error  # ErrorDTO-compatible instance
+# 0.9.x
+Errors(unauthorized=True, validation_error=False)
 
-router = APIRouter()
-
-@router.delete(
-    "/{notificationId}",
-    responses=Errors(
-        notification_not_found_error,
-        unauthorized=True,
-        forbidden=True,
-    ),
-)
-async def delete_notification(notification_id: int):
-    """Delete a notification."""
-    pass
+# 1.0
+Errors(unauthorized_401=True, validation_error_422=False)
 ```
 
-### Example 3: Multiple Examples for Same Status
+### Implicit 422 (removed)
 
 ```python
-@router.delete(
-    "/{id}",
-    responses=Errors(
-        {401: {  # Override with multiple examples
-            "description": "Unauthorized",
-            "content": {
-                "application/json": {
-                    "examples": {
-                        "InvalidToken": {"value": {"detail": "Invalid token"}},
-                        "SessionNotFound": {"value": {"detail": "Session not found"}},
-                    },
-                },
-            },
-        }},
-        unauthorized=True,  # Basic 401
-    ),
-)
-def delete_item(id: int):
-    """Delete an item."""
-    pass
+# 0.9.x — bare Errors() documented 422
+Errors()
+
+# 1.0 — opt in
+Errors(validation_error_422=True)
+# or ErrorProfile(validation_error_422=True)
 ```
 
-### Example 4: Clean Architecture Integration
+### `to_example()` (removed)
 
-This example shows how to use `fastapi-errors-plus` in a FastAPI project with Clean Architecture:
+Rename custom DTO methods to **`to_examples()`**. Bundled DTOs no longer expose `to_example()`.
 
-**Domain Layer** (`domain/errors.py`):
-```python
-from typing import Dict, Any
+### Audit commands
 
-class DomainException(Exception):
-    """Domain exception usable as runtime error and shaped like ErrorDTO for OpenAPI."""
-    status_code: int
-    message: str
-
-    def __init__(self) -> None:
-        super().__init__(self.message)
-
-    def to_examples(self) -> Dict[str, Any]:
-        return {
-            self.message: {
-                "value": {"detail": self.message},
-            },
-        }
-
-
-class ItemNotFoundError(DomainException):
-    status_code = 404
-    message = "Item not found"
-
-
-class ItemAlreadyExistsError(DomainException):
-    status_code = 409
-    message = "Item already exists"
+```bash
+rg 'unauthorized=|forbidden=|validation_error=|internal_server_error=' --glob '*.py'
+rg 'def to_example\b' --glob '*.py'
 ```
 
-**Application Layer** (`application/use_cases.py`):
-```python
-from domain.errors import ItemNotFoundError, ItemAlreadyExistsError
-
-class CreateItemUseCase:
-    """Use case for creating an item."""
-    
-    def execute(self, item_data: dict):
-        # Business logic here
-        if self._item_exists(item_data["id"]):
-            raise ItemAlreadyExistsError()
-        # ... create item ...
-        return item
-
-class GetItemUseCase:
-    """Use case for getting an item."""
-    
-    def execute(self, item_id: int):
-        item = self._repository.get(item_id)
-        if not item:
-            raise ItemNotFoundError()
-        return item
-```
-
-**Infrastructure/Presentation Layer** (`api/routes/items.py`):
-```python
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi_errors_plus import Errors
-from domain.errors import ItemNotFoundError, ItemAlreadyExistsError
-from application.use_cases import CreateItemUseCase, GetItemUseCase
-
-router = APIRouter()
-
-@router.post(
-    "/items",
-    status_code=status.HTTP_201_CREATED,
-    responses=Errors(
-        ItemAlreadyExistsError(),  # Domain error
-        unauthorized=True,  # From authentication dependency
-        forbidden=True,     # From authorization dependency
-        # validation_error=True - not needed, defaults to True (FastAPI validates all parameters)
-    ),
-)
-async def create_item(
-    item_data: dict,
-    use_case: CreateItemUseCase = Depends(),
-):
-    """Create a new item."""
-    try:
-        item = use_case.execute(item_data)
-        return item
-    except ItemAlreadyExistsError as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=e.message,
-        )
-
-@router.get(
-    "/items/{item_id}",
-    responses=Errors(
-        ItemNotFoundError(),  # Domain error
-        unauthorized=True,
-        forbidden=True,
-    ),
-)
-async def get_item(
-    item_id: int,
-    use_case: GetItemUseCase = Depends(),
-):
-    """Get an item by ID."""
-    try:
-        item = use_case.execute(item_id)
-        return item
-    except ItemNotFoundError as e:
-        raise HTTPException(
-            status_code=e.status_code,
-            detail=e.message,
-        )
-```
-
-**Benefits of this approach:**
-- Domain errors are reusable across layers
-- Errors are documented directly in the endpoint
-- Clean separation of concerns
-- Domain layer doesn't depend on FastAPI
-- Easy to test domain errors independently
+Run OpenAPI diff in CI after upgrading — see the migration guide checklist.
 
 ## Limitations
 
@@ -1048,8 +720,7 @@ The library improves **transparency of documented** errors. It does **not** solv
 - **`Depends()` exceptions**: auth/permission dependencies may raise 401/403, but if they are not
   declared in `Errors(...)`, the spec is incomplete.
 - **Over-documented responses**: `Errors(...)` can include responses that are never raised by endpoint logic.
-- **1.0 migration surprise**: if you rely on implicit 422 today, pin it explicitly with
-  `validation_error_422=True/False` before moving to 1.0.
+- **1.0 upgrade:** bare `Errors()` no longer documents 422 — add `validation_error_422=True` (or profile) where the OpenAPI contract should list validation errors.
 
 ## Contributing
 
