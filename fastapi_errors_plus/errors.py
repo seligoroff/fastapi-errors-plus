@@ -11,6 +11,7 @@ from fastapi_errors_plus._descriptions import (
     STANDARD_DESCRIPTIONS as _STANDARD_DESCRIPTIONS,
     ensure_response_descriptions,
 )
+from fastapi_errors_plus._dto_validation import validate_error_dto
 from fastapi_errors_plus._flags_and_profile import resolve_standard_flags
 from fastapi_errors_plus._legacy_kwargs import reject_legacy_errors_kwargs
 from fastapi_errors_plus._merge_engine import (
@@ -19,8 +20,11 @@ from fastapi_errors_plus._merge_engine import (
     add_error_dto,
     add_standard_error,
 )
+from fastapi_errors_plus._standard_errors import (
+    standard_validation_error_example,
+    standard_validation_error_openapi_json_extras,
+)
 from fastapi_errors_plus.error_profile import ErrorProfile
-from fastapi_errors_plus.merge_utils import unique_key
 from fastapi_errors_plus.protocol import ErrorDTO
 
 
@@ -128,7 +132,8 @@ class Errors(Mapping):
                 state,
                 _HTTP_422,
                 "Validation Error",
-                {"detail": "Validation error"},
+                standard_validation_error_example(),
+                application_json_extras=standard_validation_error_openapi_json_extras(),
             )
         if flags.internal_server_error_500:
             add_standard_error(
@@ -142,43 +147,14 @@ class Errors(Mapping):
             if isinstance(error, dict):
                 add_dict_error(state, error)
             else:
-                self._validate_error_dto(error)
+                validate_error_dto(error)
                 add_error_dto(
                     state,
                     error,
-                    standard_descriptions=_STANDARD_DESCRIPTIONS,
                 )
 
         ensure_response_descriptions(state.responses)
         self._responses = state.responses
-
-    def _validate_error_dto(self, error: Any) -> None:
-        """Validate that error object implements :class:`ErrorDTO`."""
-        has_to_examples = callable(getattr(error, "to_examples", None))
-        has_to_example = callable(getattr(error, "to_example", None))
-
-        if has_to_example and not has_to_examples:
-            raise TypeError(
-                f"{type(error).__name__} implements deprecated to_example(); "
-                "use to_examples() instead."
-            )
-
-        required_attrs = ("status_code", "message")
-        missing_attrs = [attr for attr in required_attrs if not hasattr(error, attr)]
-        missing_methods = [] if has_to_examples else ["to_examples()"]
-
-        if missing_attrs or missing_methods:
-            missing = missing_attrs + missing_methods
-            raise TypeError(
-                f"ErrorDTO object must have {', '.join(required_attrs)} attributes "
-                f"and to_examples() method. "
-                f"Missing: {', '.join(missing)}. "
-                f"Got {type(error).__name__}"
-            )
-
-    def _unique_key(self, examples: Dict[str, Any], base: str) -> str:
-        """Generate unique key for examples dict (delegates to :func:`unique_key`)."""
-        return unique_key(examples, base)
 
     # Mapping protocol implementation
     def __getitem__(self, key: int) -> Dict[str, Any]:

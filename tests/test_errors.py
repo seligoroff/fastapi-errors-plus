@@ -713,23 +713,24 @@ class TestUniqueKeys:
         assert examples["E_2"]["value"]["detail"] == "Second"
         assert len(examples) == 2
 
-    def test_unique_keys_multiple_collisions(self):
+    def test_unique_keys_multiple_collisions(self) -> None:
         """Test unique key generation with multiple collisions."""
-        errors = Errors()
+        from fastapi_errors_plus.merge_utils import unique_key as merge_unique_key
+
         examples = {
             "CustomExample": {"value": {"detail": "First"}},
             "CustomExample_2": {"value": {"detail": "Second"}},
         }
 
         # Add another CustomExample - should become CustomExample_3
-        unique_key = errors._unique_key(examples, "CustomExample")
-        assert unique_key == "CustomExample_3"
+        key = merge_unique_key(examples, "CustomExample")
+        assert key == "CustomExample_3"
 
-        examples[unique_key] = {"value": {"detail": "Third"}}
+        examples[key] = {"value": {"detail": "Third"}}
 
         # Add another - should become CustomExample_4
-        unique_key = errors._unique_key(examples, "CustomExample")
-        assert unique_key == "CustomExample_4"
+        key = merge_unique_key(examples, "CustomExample")
+        assert key == "CustomExample_4"
 
 
 @pytest.mark.unit

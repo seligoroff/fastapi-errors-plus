@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 from typing import Any, Dict, Optional
 
+from fastapi_errors_plus._dto_validation import validate_error_dto
+
 
 def pick_error_dto_application_json_extra(
     error_dto: Any,
@@ -37,16 +39,5 @@ def pick_error_dto_model(error_dto: Any) -> Any:
 
 def collect_dto_examples(error_dto: Any) -> Dict[str, Any]:
     """Return a deep copy of examples from an ErrorDTO via ``to_examples()``."""
-    cls = type(error_dto)
-    has_to_examples = callable(getattr(error_dto, "to_examples", None))
-    has_to_example = callable(getattr(error_dto, "to_example", None))
-
-    if has_to_examples:
-        return copy.deepcopy(error_dto.to_examples())
-
-    if has_to_example:
-        raise TypeError(
-            f"{cls.__name__} implements deprecated to_example(); use to_examples() instead."
-        )
-
-    raise TypeError(f"{cls.__name__} has no to_examples() method")
+    validate_error_dto(error_dto)
+    return copy.deepcopy(error_dto.to_examples())

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-07-10
+
+Patch release — stricter DTO validation, HTTPValidationError-shaped 422, documented merge semantics.
+
+### Fixed
+
+- **DTO validation:** `status_code` must be `int` (100–599); `message` non-empty `str`; `to_examples()` must return `dict` — clear `TypeError`/`ValueError` instead of malformed OpenAPI or `AttributeError` on merge.
+- **`examples` merge:** incoming non-mapping `examples` in dict/DTO paths raise `TypeError` with a path hint (H3).
+- **Description merge:** DTO no longer replaces `description` on user `dict` entries that happen to use the same wording as a standard flag — only descriptions originating from standard flags are overridable (issue #12 tail, C1).
+
+### Changed
+
+- **`validation_error_422=True`:** example body uses FastAPI-style `detail: [...]`; `application/json` includes `schema` from `fastapi.openapi.utils` when available (issue #07 tail, D3).
+- **Removed** dead `Errors._unique_key` method — use `merge_utils.unique_key`.
+
+### Added
+
+- **`_dto_validation.validate_error_dto`**, **`_standard_errors`** internal modules.
+- **README:** merge semantics table (EN/RU); 422 note mentions HTTPValidationError-shaped library output.
+- **Tests:** `tests/test_release_102.py` (10 cases).
+
 ## [1.0.1] - 2026-07-10
 
 Patch release — documentation and small runtime hygiene; **no breaking API changes** vs 1.0.0.

@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-154-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-168-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Universal library for documenting errors in FastAPI endpoints.
@@ -310,7 +310,7 @@ Use boolean flags for common HTTP status codes:
 
 **Note on 422:** By default, `Errors()` does **not** add a 422 response. Pass `validation_error_422=True` (or set `ErrorProfile(validation_error_422=True)`) for endpoints where you want a **library-managed** documented validation error. For ADR-style APIs that document domain error bodies instead of generic 422, keep `validation_error_422=False` explicitly or via profile.
 
-This flag controls **only** the entry this library merges into `responses=Errors(...)`. At **runtime**, FastAPI may still return `HTTPValidationError` for invalid parameters. In the **OpenAPI schema**, FastAPI also injects its own `422` response with `HTTPValidationError` on routes that have validated path/query/body parameters — **independent of this library**. `validation_error_422=False` does **not** remove that schema entry. If your contract must not mix ADR error bodies with FastAPI's validation schema in Swagger, document domain errors explicitly and treat library flags and FastAPI's auto-422 as separate concerns; filter or customize OpenAPI output if you need a single error format in the spec (e.g. post-process `app.openapi()`).
+This flag controls **only** the entry this library merges into `responses=Errors(...)`. When enabled, the library documents a **HTTPValidationError-shaped** example (`detail` as an array) and an inline `schema` aligned with FastAPI. In the **OpenAPI schema**, FastAPI also injects its own `422` response with `HTTPValidationError` on routes that have validated path/query/body parameters — **independent of this library**. `validation_error_422=False` does **not** remove that schema entry. If your contract must not mix ADR error bodies with FastAPI's validation schema in Swagger, document domain errors explicitly and treat library flags and FastAPI's auto-422 as separate concerns; filter or customize OpenAPI output if you need a single error format in the spec (e.g. post-process `app.openapi()`).
 
 ```python
 @router.get(
@@ -439,9 +439,19 @@ def update_item(id: int):
     pass
 ```
 
-When merging the same status code: a **dict** wins for **`description`** over bundled standard-flag wording; an **ErrorDTO**'s `message` can replace the description only while it still matches the library's default label for that code.
+When merging the same status code, use the table below. Under `content["application/json"]`, `example` / `examples` are merged; later **`dict`** entries can add **`schema`**, **`encoding`**, etc.
 
-Under `content["application/json"]`, `example` / `examples` are merged; later **`dict`** entries can add **`schema`**, **`encoding`**, etc. Combine one **`ErrorDTO`** with a **`dict`** for the same status listing only non-example keys:
+#### Merge semantics (same HTTP status)
+
+| Field | Standard flag (first) | `dict` (later) | `ErrorDTO` (later) |
+|-------|----------------------|----------------|---------------------|
+| `description` | Sets initial text | **Last wins** | Replaces only if empty or description came from a **standard flag** on this status |
+| `examples` / `example` | Singular → `examples` map | Merge; colliding keys get `_2`, `_3`, … | Merge; identical values skipped |
+| `model` / `schema` / extras | — | **Last wins** on `application/json` | **Last wins** on `application/json` |
+| `headers` / `links` | — | Shallow merge (later keys update) | — |
+| Other media types | — | **Replace** per media type key | — |
+
+Combine one **`ErrorDTO`** with a **`dict`** for the same status listing only non-example keys:
 
 ```python
 from fastapi import status

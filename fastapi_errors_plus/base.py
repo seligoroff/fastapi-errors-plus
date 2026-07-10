@@ -99,6 +99,7 @@ class StandardErrorDTO(BaseErrorDTO):
 
     def to_examples(self) -> Dict[str, Any]:
         """Generate OpenAPI ``examples`` with optional summaries."""
-        assert self.examples is not None
+        if self.examples is None:
+            return {self.message: {"value": {"detail": self.message}}}
         return _normalize_example_specs(self.examples)
 

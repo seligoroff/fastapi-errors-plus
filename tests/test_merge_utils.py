@@ -7,6 +7,7 @@ import pytest
 from fastapi_errors_plus.merge_utils import (
     ensure_examples_dict,
     merge_examples_map,
+    require_examples_mapping,
     unique_key,
 )
 
@@ -65,3 +66,10 @@ class TestMergeExamplesMap:
         }
         merge_examples_map(media, incoming, unique_key_fn=unique_key)
         assert set(media["examples"].keys()) == {"Conflict", "Conflict_2"}
+
+
+@pytest.mark.unit
+class TestRequireExamplesMapping:
+    def test_non_dict_raises_typeerror(self) -> None:
+        with pytest.raises(TypeError, match="must be a mapping"):
+            require_examples_mapping(["bad"], path="responses[404].examples")

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from http import HTTPStatus
-from typing import Any, Dict
+from typing import Any, Dict, Set
 
 from fastapi import status
 
@@ -20,13 +20,14 @@ STANDARD_DESCRIPTIONS: Dict[int, str] = {
 def apply_dto_description(
     existing: Dict[str, Any],
     error_dto: Any,
-    standard_descriptions: Dict[int, str],
+    *,
+    flag_description_codes: Set[int],
 ) -> None:
-    """Set ``description`` from DTO when missing, empty, or still a standard flag label."""
+    """Set ``description`` from DTO when missing, empty, or from a standard flag."""
     desc = existing.get("description")
     if desc is None or (isinstance(desc, str) and not desc.strip()):
         existing["description"] = error_dto.message
-    elif desc == standard_descriptions.get(error_dto.status_code):
+    elif error_dto.status_code in flag_description_codes:
         existing["description"] = error_dto.message
 
 

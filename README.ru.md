@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.104%2B-009688.svg)](https://fastapi.tiangolo.com/)
-[![Tests](https://img.shields.io/badge/tests-154-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
+[![Tests](https://img.shields.io/badge/tests-168-success.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 [![Coverage](https://img.shields.io/badge/coverage-80%25%2B-green.svg)](https://github.com/seligoroff/fastapi-errors-plus)
 
 Универсальная библиотека для документирования ошибок в эндпоинтах FastAPI.
@@ -310,7 +310,7 @@ Boolean-флаги для распространённых HTTP-статусов
 
 **Про 422:** по умолчанию `Errors()` **не** добавляет 422. Передайте `validation_error_422=True` (или `ErrorProfile(validation_error_422=True)`), если в спецификации нужен **документируемый библиотекой** validation error. Для ADR-API с доменными телами держите `validation_error_422=False` явно или через профиль.
 
-Флаг управляет **только** записью, которую библиотека мержит в `responses=Errors(...)`. В **рантайме** FastAPI может возвращать `HTTPValidationError` при невалидных параметрах. В **схеме OpenAPI** FastAPI также добавляет свой ответ `422` с `HTTPValidationError` на роуты с валидируемыми path/query/body — **независимо от библиотеки**. `validation_error_422=False` **не** убирает эту запись из спеки. Если контракт не должен смешивать ADR-тела с FastAPI-validation в Swagger, документируйте доменные ошибки явно и считайте флаги библиотеки и auto-422 FastAPI разными вещами; при необходимости фильтруйте или кастомизируйте OpenAPI (например, постобработка `app.openapi()`).
+Флаг управляет **только** записью, которую библиотека мержит в `responses=Errors(...)`. При включении библиотека документирует пример в форме **HTTPValidationError** (`detail` — массив) и inline `schema`, согласованный с FastAPI. В **рантайме** FastAPI может возвращать `HTTPValidationError` при невалидных параметрах. В **схеме OpenAPI** FastAPI также добавляет свой ответ `422` с `HTTPValidationError` на роуты с валидируемыми path/query/body — **независимо от библиотеки**. `validation_error_422=False` **не** убирает эту запись из спеки. Если контракт не должен смешивать ADR-тела с FastAPI-validation в Swagger, документируйте доменные ошибки явно и считайте флаги библиотеки и auto-422 FastAPI разными вещами; при необходимости фильтруйте или кастомизируйте OpenAPI (например, постобработка `app.openapi()`).
 
 ```python
 @router.get(
@@ -439,9 +439,19 @@ def update_item(id: int):
     pass
 ```
 
-При слиянии одного статуса: **dict** побеждает в **`description`** над формулировкой стандартного флага; **message** DTO заменяет description только пока совпадает с дефолтной меткой библиотеки для кода.
+При слиянии одного статуса ориентируйтесь на таблицу ниже. В `content["application/json"]` сливаются `example` / `examples`; поздние **`dict`** могут добавить **`schema`**, **`encoding`** и т.д.
 
-В `content["application/json"]` сливаются `example` / `examples`; поздние **`dict`** могут добавить **`schema`**, **`encoding`** и т.д. Можно комбинировать **`ErrorDTO`** с **`dict`** на тот же статус только с не-example ключами:
+#### Семантика merge (один HTTP-статус)
+
+| Поле | Стандартный флаг (первый) | `dict` (позже) | `ErrorDTO` (позже) |
+|------|---------------------------|----------------|---------------------|
+| `description` | Задаёт начальный текст | **Последний побеждает** | Заменяет только если пусто или description от **стандартного флага** на этом статусе |
+| `examples` / `example` | Singular → карта `examples` | Merge; коллизии → `_2`, `_3`, … | Merge; одинаковые значения пропускаются |
+| `model` / `schema` / extras | — | **Последний побеждает** в `application/json` | **Последний побеждает** в `application/json` |
+| `headers` / `links` | — | Shallow merge | — |
+| Другие media types | — | **Замена** по ключу media type | — |
+
+Можно комбинировать **`ErrorDTO`** с **`dict`** на тот же статус только с не-example ключами:
 
 ```python
 from fastapi import status

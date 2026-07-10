@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import copy
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 from fastapi_errors_plus._descriptions import apply_dto_description
 from fastapi_errors_plus._dto_adapter import (
@@ -17,6 +17,7 @@ from fastapi_errors_plus.merge_utils import (
     merge_examples_map,
     merge_openapi_application_json_non_example,
     merge_singular_example,
+    require_examples_mapping,
     standard_flag_example_key,
     unique_key,
 )
@@ -29,6 +30,7 @@ class MergeState:
 
     responses: Dict[int, Dict[str, Any]] = field(default_factory=dict)
     flag_example_keys: Dict[int, str] = field(default_factory=dict)
+    flag_description_codes: Set[int] = field(default_factory=set)
 
 
 def prior_singular_example_key(state: MergeState, status_code: int) -> Optional[str]:
@@ -41,18 +43,24 @@ def add_standard_error(
     status_code: int,
     description: str,
     example: Dict[str, Any],
+    *,
+    application_json_extras: Optional[Dict[str, Any]] = None,
 ) -> None:
     """Add standard error, merging examples on status collision."""
     example_key = standard_flag_example_key(status_code)
 
     if status_code not in state.responses:
         state.flag_example_keys[status_code] = example_key
+        state.flag_description_codes.add(status_code)
+        media_json: Dict[str, Any] = {"example": example}
+        if application_json_extras is not None:
+            merge_openapi_application_json_non_example(
+                media_json, application_json_extras
+            )
         state.responses[status_code] = {
             "description": description,
             "content": {
-                "application/json": {
-                    "example": example,
-                },
+                "application/json": media_json,
             },
         }
     else:
@@ -63,12 +71,34 @@ def add_standard_error(
         examples = ensure_examples_dict(content, prior_singular_key=prior_key)
         resolved_key = unique_key(examples, example_key)
         examples[resolved_key] = {"value": example}
+        if application_json_extras is not None:
+            merge_openapi_application_json_non_example(content, application_json_extras)
+
+
+def _validate_incoming_dict_examples(
+    response_data: Dict[str, Any],
+    status_code: int,
+) -> None:
+    """Fail fast when a dict fragment has a non-mapping ``examples`` value."""
+    content = response_data.get("content")
+    if not isinstance(content, dict):
+        return
+    media = content.get("application/json")
+    if isinstance(media, dict) and "examples" in media:
+        require_examples_mapping(
+            media["examples"],
+            path=(
+                f"responses[{status_code}].content"
+                "['application/json']['examples']"
+            ),
+        )
 
 
 def add_dict_error(state: MergeState, error_dict: Dict[int, Dict[str, Any]]) -> None:
     """Add error from dict in FastAPI responses format (merge on collision)."""
     for status_code, response_data in error_dict.items():
         response_data = copy.deepcopy(response_data)
+        _validate_incoming_dict_examples(response_data, status_code)
         if status_code not in state.responses:
             state.responses[status_code] = response_data
         else:
@@ -109,10 +139,15 @@ def add_dict_error(state: MergeState, error_dict: Dict[int, Dict[str, Any]]) -> 
 
                     if "examples" in response_json:
                         prior_key = prior_singular_example_key(state, status_code)
-                        incoming_examples = response_json["examples"]
+                        incoming_examples = require_examples_mapping(
+                            response_json["examples"],
+                            path=(
+                                f"responses[{status_code}].content"
+                                "['application/json']['examples']"
+                            ),
+                        )
                         if (
                             prior_key
-                            and isinstance(incoming_examples, dict)
                             and prior_key in incoming_examples
                         ):
                             prior_key = "default"
@@ -136,8 +171,6 @@ def add_dict_error(state: MergeState, error_dict: Dict[int, Dict[str, Any]]) -> 
 def add_error_dto(
     state: MergeState,
     error_dto: ErrorDTO,
-    *,
-    standard_descriptions: Dict[int, str],
 ) -> None:
     """Add error from ErrorDTO, merging examples on status collision."""
     status_code = error_dto.status_code
@@ -163,7 +196,11 @@ def add_error_dto(
     else:
         existing = state.responses[status_code]
 
-        apply_dto_description(existing, error_dto, standard_descriptions)
+        apply_dto_description(
+            existing,
+            error_dto,
+            flag_description_codes=state.flag_description_codes,
+        )
 
         if dto_model is not None:
             existing["model"] = dto_model

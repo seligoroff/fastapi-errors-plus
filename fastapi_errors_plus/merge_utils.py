@@ -4,6 +4,9 @@ import copy
 import warnings
 from typing import Any, Callable, Dict, Optional
 
+# Fallback key when merging a singular example into an occupied examples slot.
+CUSTOM_EXAMPLE_FALLBACK_KEY = "CustomExample"
+
 # Example keys produced by standard HTTP status flags in :class:`Errors`.
 STANDARD_FLAG_EXAMPLE_KEYS: Dict[int, str] = {
     401: "StandardUnauthorized",
@@ -39,6 +42,17 @@ def merge_openapi_application_json_non_example(
 def standard_flag_example_key(status_code: int) -> str:
     """Return the examples-map key for a standard flag on *status_code*."""
     return STANDARD_FLAG_EXAMPLE_KEYS.get(status_code, f"Standard{status_code}")
+
+
+def require_examples_mapping(
+    value: Any,
+    *,
+    path: str = "content['application/json']['examples']",
+) -> Dict[str, Any]:
+    """Require an OpenAPI ``examples`` map; raise :class:`TypeError` otherwise."""
+    if not isinstance(value, dict):
+        raise TypeError(f"{path} must be a mapping, got {type(value).__name__}")
+    return value
 
 
 def ensure_examples_dict(
@@ -82,7 +96,7 @@ def merge_singular_example(
     if target_key not in examples:
         examples[target_key] = {"value": example_body}
     else:
-        unique = unique_key_fn(examples, "CustomExample")
+        unique = unique_key_fn(examples, CUSTOM_EXAMPLE_FALLBACK_KEY)
         examples[unique] = {"value": example_body}
 
 
@@ -101,6 +115,7 @@ def merge_examples_map(
     - if no ``unique_key_fn`` is provided, fall back to last-wins overwrite
       (backwards compatible behavior for any internal callers).
     """
+    incoming_examples = require_examples_mapping(incoming_examples)
     examples = ensure_examples_dict(media_json, prior_singular_key=prior_singular_key)
     for key, value in incoming_examples.items():
         if key in examples and examples[key] == value:
