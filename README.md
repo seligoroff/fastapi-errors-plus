@@ -92,7 +92,16 @@ permission_denied = ErrorDoc(
             },
         },
     },
-    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
+    openapi_json_extras={
+        "schema": {
+            "type": "object",
+            "required": ["code", "detail"],
+            "properties": {
+                "code": {"type": "string"},
+                "detail": {"type": "string"},
+            },
+        },
+    },
 )
 
 @router.delete("/{id}", responses=Errors(permission_denied))
@@ -111,7 +120,14 @@ conflict = ErrorDoc(
     status_code=409,
     message="BusinessRule",
     model=ApplicationJsonError,  # optional Pydantic model
-    schema=ADR_ERROR_BODY_SCHEMA,  # or raw JSON Schema
+    schema={
+        "type": "object",
+        "required": ["code", "detail"],
+        "properties": {
+            "code": {"type": "string"},
+            "detail": {"type": "string"},
+        },
+    },
     body={"code": "RULE_VIOLATION", "detail": "Item exists"},
 )
 
@@ -281,7 +297,7 @@ def delete_item(id: int):
     pass
 ```
 
-`examples` values may be **strings** (shorthand for `{"detail": text}`) or full OpenAPI Example Objects with **`summary`** and **`value`**.
+`examples` values may be **strings** (shorthand for `{"detail": text}`), full OpenAPI Example Objects with **`summary`** and **`value`**, or any other **`dict`** treated as the response **body** (wrapped as `{"value": body}`).
 
 ### Standard HTTP flags
 
@@ -292,7 +308,9 @@ Use boolean flags for common HTTP status codes:
 - `validation_error_422=True` → 422 Unprocessable Entity (opt-in; default is **not** to add 422)
 - `internal_server_error_500=True` → 500 Internal Server Error
 
-**Note on 422:** By default, `Errors()` does **not** add a 422 response. Pass `validation_error_422=True` (or set `ErrorProfile(validation_error_422=True)`) for endpoints where you want a documented validation error. For ADR-style APIs that document domain error bodies instead of generic 422, keep `validation_error_422=False` explicitly or via profile. This disables only the **library-managed** 422 entry; FastAPI may still return auto-422 `HTTPValidationError` for invalid parameters — treat those as separate concerns in contract tests.
+**Note on 422:** By default, `Errors()` does **not** add a 422 response. Pass `validation_error_422=True` (or set `ErrorProfile(validation_error_422=True)`) for endpoints where you want a **library-managed** documented validation error. For ADR-style APIs that document domain error bodies instead of generic 422, keep `validation_error_422=False` explicitly or via profile.
+
+This flag controls **only** the entry this library merges into `responses=Errors(...)`. At **runtime**, FastAPI may still return `HTTPValidationError` for invalid parameters. In the **OpenAPI schema**, FastAPI also injects its own `422` response with `HTTPValidationError` on routes that have validated path/query/body parameters — **independent of this library**. `validation_error_422=False` does **not** remove that schema entry. If your contract must not mix ADR error bodies with FastAPI's validation schema in Swagger, document domain errors explicitly and treat library flags and FastAPI's auto-422 as separate concerns; filter or customize OpenAPI output if you need a single error format in the spec (e.g. post-process `app.openapi()`).
 
 ```python
 @router.get(
@@ -426,6 +444,8 @@ When merging the same status code: a **dict** wins for **`description`** over bu
 Under `content["application/json"]`, `example` / `examples` are merged; later **`dict`** entries can add **`schema`**, **`encoding`**, etc. Combine one **`ErrorDTO`** with a **`dict`** for the same status listing only non-example keys:
 
 ```python
+from fastapi import status
+
 Errors(
     conflict_error_doc,
     {
@@ -536,7 +556,7 @@ error_responses = Errors(unauthorized_401=True, forbidden_403=True)
 documented = error_responses[401]  # deep copy — safe to read, won't mutate internal state
 ```
 
-**Isolation (0.8+):** incoming response **dicts** are **deep-copied** on ingest; **`errors[status]`** returns a **deep copy** so callers cannot corrupt shared registry templates or internal merge state.
+**Isolation:** incoming response **dicts** are **deep-copied** on ingest; **`errors[status]`** returns a **deep copy** so callers cannot corrupt shared registry templates or internal merge state.
 
 **Descriptions:** response blocks with only **`model`** (no `description`) get a default from **`HTTPStatus.phrase`** so OpenAPI generation does not fail.
 
@@ -559,14 +579,14 @@ Declarative DTO for arbitrary example bodies and per-example **`summary`**.
 
 **Constructor:**
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 class ErrorDoc:
     def __init__(
         self,
         status_code: int,
         message: str,
-        examples: Optional[Dict[str, str | dict]] = None,
+        examples: Optional[Dict[str, Union[str, Dict[str, Any]]]] = None,
         body: Optional[Dict[str, Any]] = None,
         example_key: Optional[str] = None,
         model: Any = None,
@@ -586,15 +606,13 @@ Frozen project-wide defaults for standard HTTP flags.
 from typing import Optional
 
 class ErrorProfile:
-    def __init__(
-        self,
-        unauthorized_401: Optional[bool] = None,
-        forbidden_403: Optional[bool] = None,
-        validation_error_422: Optional[bool] = None,
-        internal_server_error_500: Optional[bool] = None,
-    ) -> None:
-        ...
+    unauthorized_401: bool = False
+    forbidden_403: bool = False
+    validation_error_422: Optional[bool] = None  # None = profile does not set 422
+    internal_server_error_500: bool = False
 ```
+
+`validation_error_422` alone uses **`Optional[bool]`**: `None` means the profile leaves 422 unset (endpoint / `Errors` kwargs decide). The other three flags default to **`False`** when omitted.
 
 ### `BaseErrorDTO`
 
@@ -623,22 +641,26 @@ error = BaseErrorDTO(status_code=404, message="Not found")
 
 ### `StandardErrorDTO`
 
-Extended implementation for errors with multiple examples.
+Extended implementation for errors with multiple examples. Inherits **`model`**, **`schema`**, and **`openapi_json_extras`** from **`BaseErrorDTO`**.
 
 **Constructor:**
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-class StandardErrorDTO:
+class StandardErrorDTO(BaseErrorDTO):
     def __init__(
         self,
         status_code: int,
         message: str,
+        model: Any = None,
+        schema: Optional[Dict[str, Any]] = None,
         openapi_json_extras: Optional[Dict[str, Any]] = None,
-        examples: Optional[Dict[str, str]] = None,
+        examples: Optional[Dict[str, Union[str, Dict[str, Any]]]] = None,
     ) -> None:
         ...
 ```
+
+`examples` values are shorthand **`str`** (detail text), an OpenAPI Example Object **`dict`** (with **`summary`** / **`value`**), or any other **`dict`** response **body** (wrapped as `{"value": body}`).
 
 **Example:**
 ```python
@@ -654,15 +676,15 @@ error = StandardErrorDTO(
 
 ## Migration from 0.9
 
-Upgrading from **0.9.x**? See **[CHANGELOG.md](CHANGELOG.md)** § 1.0.0 and the full guide **[migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md)**.
+Upgrading from **0.9.x**? See **[CHANGELOG.md](CHANGELOG.md)** § 1.0.0 and the full guide **[docs/migration-0.9-to-1.0.md](docs/migration-0.9-to-1.0.md)**.
 
 ### Breaking changes (summary)
 
 | Area | 0.9.x | 1.0 |
 |------|-------|-----|
+| DTO with only `to_example()` | Works + warning | **`TypeError`** at route setup — use `to_examples()` |
 | `unauthorized`, `forbidden`, `validation_error`, `internal_server_error` | Deprecated, accepted | **`TypeError`** — use `*_401` / `*_403` / `*_422` / `*_500` |
 | `Errors()` without 422 kwargs | Implicit 422 + warning | **No 422** |
-| DTO with only `to_example()` | Works + warning | **`TypeError`** — use `to_examples()` |
 | `LegacyErrorDTO`, `ErrorDTOLike` | Exported | **Removed** |
 
 ### Legacy kwargs (removed)
@@ -686,9 +708,9 @@ Errors(validation_error_422=True)
 # or ErrorProfile(validation_error_422=True)
 ```
 
-### `to_example()` (removed)
+### `to_example()` (removed) — migrate first
 
-Rename custom DTO methods to **`to_examples()`**. Bundled DTOs no longer expose `to_example()`.
+Rename custom DTO methods to **`to_examples()`** before legacy kwargs. Bundled DTOs no longer expose `to_example()`. Audit: `rg 'def to_example\b' --glob '*.py'`.
 
 ### Audit commands
 
@@ -720,7 +742,7 @@ The library improves **transparency of documented** errors. It does **not** solv
 - **`Depends()` exceptions**: auth/permission dependencies may raise 401/403, but if they are not
   declared in `Errors(...)`, the spec is incomplete.
 - **Over-documented responses**: `Errors(...)` can include responses that are never raised by endpoint logic.
-- **1.0 upgrade:** bare `Errors()` no longer documents 422 — add `validation_error_422=True` (or profile) where the OpenAPI contract should list validation errors.
+- **1.0 upgrade:** bare `Errors()` no longer documents library 422 — add `validation_error_422=True` (or profile) where the OpenAPI contract should list validation errors. FastAPI may still add its own `422` / `HTTPValidationError` to the schema for validated parameters.
 
 ## Contributing
 

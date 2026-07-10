@@ -1,6 +1,7 @@
 """Shared OpenAPI example merge helpers (internal)."""
 
 import copy
+import warnings
 from typing import Any, Callable, Dict, Optional
 
 # Example keys produced by standard HTTP status flags in :class:`Errors`.
@@ -50,7 +51,12 @@ def ensure_examples_dict(
         existing = media_json["examples"]
         if isinstance(existing, dict):
             return existing
-        # Defensive fallback for malformed user dicts.
+        warnings.warn(
+            "content['application/json']['examples'] must be a dict, "
+            f"got {type(existing).__name__}; resetting to an empty dict.",
+            UserWarning,
+            stacklevel=3,
+        )
         fallback: Dict[str, Any] = {}
         media_json["examples"] = fallback
         return fallback
@@ -97,6 +103,8 @@ def merge_examples_map(
     """
     examples = ensure_examples_dict(media_json, prior_singular_key=prior_singular_key)
     for key, value in incoming_examples.items():
+        if key in examples and examples[key] == value:
+            continue
         if key not in examples:
             examples[key] = copy.deepcopy(value)
             continue

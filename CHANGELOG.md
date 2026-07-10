@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-10
+
+Patch release — documentation and small runtime hygiene; **no breaking API changes** vs 1.0.0.
+
+### Fixed
+
+- **Migration guide** published at [`docs/migration-0.9-to-1.0.md`](docs/migration-0.9-to-1.0.md) (was only under `localdocs/`, gitignored — README link was broken on GitHub/PyPI).
+- **`ErrorProfile` docs:** README now matches implementation (`bool = False` for 401/403/500; `validation_error_422: Optional[bool] = None`).
+- **`merge_examples_map`:** skip re-adding an example when the same key already holds an equal value (idempotent merge for shared DTOs).
+- **`ensure_examples_dict`:** emit `UserWarning` when `examples` exists but is not a `dict` (was silent reset).
+
+### Changed
+
+- **`pick_error_dto_application_json_extra` docstring** aligned with merge behaviour (schema + `openapi_json_extras` + getter; getter wins on key conflicts).
+- **`ErrorProfile` module docstring** no longer says «release 0.9».
+- Migration checklist: **`to_example()` → `to_examples()`** listed first.
+- **README «Note on 422»:** documents FastAPI auto-422 in **OpenAPI schema** (not only runtime); `validation_error_422=False` does not remove it.
+- **API Reference:** `StandardErrorDTO` inherits `model` / `schema`; `examples` typed as `Union[str, Dict]` (Python 3.8-compatible); `ErrorDoc` uses `Union` instead of PEP 604 `|`.
+- **README snippets:** inline JSON Schema in early `ErrorDoc` examples (no forward reference to `ADR_ERROR_BODY_SCHEMA`).
+- **README.ru:** language pass for mixed EN/RU sections touched in this release.
+- **`StandardErrorDTO` docs:** `examples` may be response-body `dict` (not only Example Object); merging snippet imports `status`; RU API Reference anglicisms removed.
+
+### Removed
+
+- Dead **`Errors._flag_example_keys`** instance attribute (internal merge still tracks flag keys during build).
+
+### Notes
+
+- **`Errors(**kwargs)`** catch-all for legacy-kw `TypeError` messages remains intentional in 1.x; static checkers may not catch typos like `unautorized_401=` — planned tightening in 2.0.
+
 ## [1.0.0] - 2026-07-09
 
 Semver: **major** — removes APIs deprecated in 0.9.x; OpenAPI output changes when callers relied on implicit 422 or legacy kwargs.
@@ -26,7 +56,7 @@ Semver: **major** — removes APIs deprecated in 0.9.x; OpenAPI output changes w
 
 ### Migration
 
-Upgrade path: [localdocs/notes/migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md).
+Upgrade path: [docs/migration-0.9-to-1.0.md](docs/migration-0.9-to-1.0.md).
 
 #### Legacy kwargs
 

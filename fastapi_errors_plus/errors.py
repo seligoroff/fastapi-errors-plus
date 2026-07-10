@@ -151,7 +151,6 @@ class Errors(Mapping):
 
         ensure_response_descriptions(state.responses)
         self._responses = state.responses
-        self._flag_example_keys = state.flag_example_keys
 
     def _validate_error_dto(self, error: Any) -> None:
         """Validate that error object implements :class:`ErrorDTO`."""

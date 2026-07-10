@@ -12,7 +12,8 @@ def pick_error_dto_application_json_extra(
     """Optional OpenAPI ``application/json`` keys from DTO (e.g. ``schema``, ``encoding``).
 
     Prefer ``to_openapi_json_media_type_extras()`` when present and returns a truthy mapping;
-    otherwise ``schema`` field, then ``openapi_json_extras``. Must not rely on ``example`` /
+    otherwise merge ``schema`` field and ``openapi_json_extras``. Keys from the getter
+    overwrite the same keys from attributes. Must not rely on ``example`` /
     ``examples`` here — ``to_examples()`` covers those."""
     extras: Dict[str, Any] = {}
     schema = getattr(error_dto, "schema", None)

@@ -75,7 +75,7 @@ def delete_item(id: int):
 
 ### ErrorDoc
 
-For arbitrary response bodies (ADR `code` / `detail` / `context`, not only `detail` strings), use **`ErrorDoc`**:
+Для произвольных тел ответа (ADR: `code` / `detail` / `context`, не только строки `detail`) используйте **`ErrorDoc`**:
 
 ```python
 from fastapi_errors_plus import ErrorDoc, Errors
@@ -92,7 +92,16 @@ permission_denied = ErrorDoc(
             },
         },
     },
-    openapi_json_extras={"schema": ADR_ERROR_BODY_SCHEMA},
+    openapi_json_extras={
+        "schema": {
+            "type": "object",
+            "required": ["code", "detail"],
+            "properties": {
+                "code": {"type": "string"},
+                "detail": {"type": "string"},
+            },
+        },
+    },
 )
 
 @router.delete("/{id}", responses=Errors(permission_denied))
@@ -110,8 +119,15 @@ from fastapi_errors_plus import ErrorDoc, Errors
 conflict = ErrorDoc(
     status_code=409,
     message="BusinessRule",
-    model=ApplicationJsonError,  # optional Pydantic model
-    schema=ADR_ERROR_BODY_SCHEMA,  # or raw JSON Schema
+    model=ApplicationJsonError,  # опциональная Pydantic-модель
+    schema={
+        "type": "object",
+        "required": ["code", "detail"],
+        "properties": {
+            "code": {"type": "string"},
+            "detail": {"type": "string"},
+        },
+    },
     body={"code": "RULE_VIOLATION", "detail": "Item exists"},
 )
 
@@ -129,7 +145,7 @@ def create_item():
 from typing import Dict, Any
 
 class DomainException(Exception):
-    """Base exception implementing ErrorDTO protocol."""
+    """Базовое исключение, реализующее протокол ErrorDTO."""
     status_code: int
     message: str
 
@@ -138,7 +154,7 @@ class DomainException(Exception):
 
     @classmethod
     def for_openapi(cls):
-        """Returns instance for OpenAPI documentation."""
+        """Экземпляр для документации OpenAPI."""
         return cls()
 
 class NotificationNotFoundError(DomainException):
@@ -153,7 +169,7 @@ class NotificationNotFoundError(DomainException):
     def for_openapi(cls):
         return cls(notification_id="example_id")
 
-# In endpoint
+# В эндпоинте
 @router.delete(
     "/{notificationId}",
     responses=Errors(
@@ -165,7 +181,7 @@ async def delete_notification(notification_id: str):
         raise NotificationNotFoundError(notification_id)
 ```
 
-See [examples/domain_exceptions.py](examples/domain_exceptions.py) for a full walkthrough.
+Полный пример — [examples/domain_exceptions.py](examples/domain_exceptions.py).
 
 ### ErrorProfile
 
@@ -206,7 +222,7 @@ notification_error = BaseErrorDTO(
     responses=Errors(notification_error),
 )
 def delete_item(id: int):
-    """Delete an item."""
+    """Удалить элемент."""
     pass
 ```
 
@@ -277,11 +293,11 @@ forbidden_error = StandardErrorDTO(
     ),
 )
 def delete_item(id: int):
-    """Delete an item."""
+    """Удалить элемент."""
     pass
 ```
 
-`examples` values may be **strings** (shorthand for `{"detail": text}`) or full OpenAPI Example Objects with **`summary`** and **`value`**.
+Значения **`examples`** — сокращённая **`str`** (текст detail), **`dict`** OpenAPI Example Object (с **`summary`** / **`value`**) или произвольное **`dict`**-тело ответа (оборачивается в `{"value": body}`).
 
 ### Стандартные HTTP-флаги
 
@@ -292,7 +308,9 @@ Boolean-флаги для распространённых HTTP-статусов
 - `validation_error_422=True` → 422 Unprocessable Entity (opt-in; default is **not** to add 422)
 - `internal_server_error_500=True` → 500 Internal Server Error
 
-**Про 422:** по умолчанию `Errors()` **не** добавляет 422. Передайте `validation_error_422=True` (или `ErrorProfile(validation_error_422=True)`), если в спецификации нужен validation error. Для ADR-API с доменными телами держите `validation_error_422=False` явно или через профиль. Отключается только **422 библиотеки**; FastAPI может возвращать auto-422 `HTTPValidationError` — учитывайте раздельно в контрактных тестах.
+**Про 422:** по умолчанию `Errors()` **не** добавляет 422. Передайте `validation_error_422=True` (или `ErrorProfile(validation_error_422=True)`), если в спецификации нужен **документируемый библиотекой** validation error. Для ADR-API с доменными телами держите `validation_error_422=False` явно или через профиль.
+
+Флаг управляет **только** записью, которую библиотека мержит в `responses=Errors(...)`. В **рантайме** FastAPI может возвращать `HTTPValidationError` при невалидных параметрах. В **схеме OpenAPI** FastAPI также добавляет свой ответ `422` с `HTTPValidationError` на роуты с валидируемыми path/query/body — **независимо от библиотеки**. `validation_error_422=False` **не** убирает эту запись из спеки. Если контракт не должен смешивать ADR-тела с FastAPI-validation в Swagger, документируйте доменные ошибки явно и считайте флаги библиотеки и auto-422 FastAPI разными вещами; при необходимости фильтруйте или кастомизируйте OpenAPI (например, постобработка `app.openapi()`).
 
 ```python
 @router.get(
@@ -303,7 +321,7 @@ Boolean-флаги для распространённых HTTP-статусов
     ),
 )
 def get_protected():
-    """Protected endpoint."""
+    """Защищённый эндпоинт."""
     pass
 ```
 
@@ -328,7 +346,7 @@ def get_protected():
     ),
 )
 def create_item():
-    """Create an item."""
+    """Создать элемент."""
     pass
 ```
 
@@ -344,7 +362,7 @@ class ErrorDTO(Protocol):
     message: str
 
     def to_examples(self) -> Dict[str, Any]:
-        """OpenAPI ``examples`` map: {"Key": {"value": {...}, "summary": "..."}}."""
+        """Карта OpenAPI ``examples``: {"Key": {"value": {...}, "summary": "..."}}."""
         ...
 ```
 
@@ -371,7 +389,7 @@ class MyErrorDTO:
     ),
 )
 def get_resource(id: int):
-    """Get a resource."""
+    """Получить ресурс."""
     pass
 ```
 
@@ -400,7 +418,7 @@ def get_resource(id: int):
     ),
 )
 def create_item_mixed(id: int):
-    """Create an item with mixed error types."""
+    """Создать элемент со смешанными типами ошибок."""
     pass
 ```
 
@@ -417,7 +435,7 @@ def create_item_mixed(id: int):
     ),
 )
 def update_item(id: int):
-    """Update an item."""
+    """Обновить элемент."""
     pass
 ```
 
@@ -426,6 +444,8 @@ def update_item(id: int):
 В `content["application/json"]` сливаются `example` / `examples`; поздние **`dict`** могут добавить **`schema`**, **`encoding`** и т.д. Можно комбинировать **`ErrorDTO`** с **`dict`** на тот же статус только с не-example ключами:
 
 ```python
+from fastapi import status
+
 Errors(
     conflict_error_doc,
     {
@@ -474,6 +494,8 @@ def delete_item(id: int):
 Если в проекте уже есть DTO ошибок (например, `ApiErrorDTO`), они работают при реализации **`ErrorDTO`**:
 
 ```python
+from dataclasses import dataclass
+
 @dataclass
 class ApiErrorDTO:
     status_code: int
@@ -491,7 +513,7 @@ def delete_item(id: int):
 
 ### `Errors`
 
-Основной класс для документирования ошибок in FastAPI endpoints.
+Основной класс для документирования ошибок в эндпоинтах FastAPI.
 
 #### Конструктор
 
@@ -512,7 +534,7 @@ class Errors:
 ```
 
 **Параметры:**
-- `*errors`: Arbitrary errors as dict or ErrorDTO objects
+- `*errors`: Произвольные ошибки как dict или объекты ErrorDTO
 - `unauthorized_401`: Добавить 401 Unauthorized. `None` = профиль/дефолт (по умолчанию не добавлять).
 - `forbidden_403`: Добавить 403 Forbidden. `None` = профиль/дефолт (по умолчанию не добавлять).
 - `validation_error_422`: Добавить 422 Unprocessable Entity.
@@ -522,23 +544,23 @@ class Errors:
 - `internal_server_error_500`: Добавить 500 Internal Server Error. `None` = профиль/дефолт (по умолчанию не добавлять).
 - `profile`: Опциональный **`ErrorProfile`** — дефолты проекта; явные kwargs перекрывают профиль.
 
-**Поведение 422:** `validation_error_422=True` для endpoint с валидацией параметров/тела, если в спецификации нужен блок 422. Используйте **`ErrorProfile`** для дефолтов проекта.
+**Поведение 422:** `validation_error_422=True` для эндпоинта с валидацией параметров/тела, если в спецификации нужен блок 422. Используйте **`ErrorProfile`** для дефолтов проекта.
 
 **Возвращает:**
-- A dict-like `Mapping[int, …]` suitable for FastAPI’s `responses` / OpenAPI
+- Объект вроде `Mapping[int, …]`, подходящий для `responses` / OpenAPI FastAPI
 - Передавайте экземпляр **как есть** — без вызова: `responses=Errors(...)`
 
 #### Использование
 
 ```python
-# Instances are Mapping keyed by HTTP статус-кодs
+# Экземпляр — Mapping по HTTP-статусам
 error_responses = Errors(unauthorized_401=True, forbidden_403=True)
-documented = error_responses[401]  # deep copy — safe to read, won't mutate internal state
+documented = error_responses[401]  # deep copy — безопасно читать, не мутирует внутреннее состояние
 ```
 
-**Isolation (0.8+):** incoming response **dicts** are **deep-copied** on ingest; **`errors[status]`** returns a **deep copy** so callers cannot corrupt shared registry templates or internal merge state.
+**Изоляция:** входящие **dict** в responses **глубоко копируются** при добавлении; **`errors[status]`** возвращает **deep copy**, чтобы вызывающий код не портил шаблоны и состояние мержа.
 
-**Descriptions:** response blocks with only **`model`** (no `description`) get a default from **`HTTPStatus.phrase`** so OpenAPI generation does not fail.
+**Описания:** блоки с только **`model`** (без `description`) получают дефолт из **`HTTPStatus.phrase`**, чтобы генерация OpenAPI не падала.
 
 ### `ErrorDTO`
 
@@ -549,7 +571,7 @@ documented = error_responses[401]  # deep copy — safe to read, won't mutate in
 - `message: str` — Описание сообщения об ошибке
 
 **Обязательные методы:**
-- `to_examples() -> Dict[str, Any]` — OpenAPI `examples` map for `application/json`
+- `to_examples() -> Dict[str, Any]` — карта OpenAPI `examples` для `application/json`
 
 При инициализации `Errors(...)` объекты без `status_code`, `message` или вызываемого **`to_examples()`** вызывают **`TypeError`** с указанием, чего не хватает.
 
@@ -557,16 +579,16 @@ documented = error_responses[401]  # deep copy — safe to read, won't mutate in
 
 Декларативный DTO для произвольных тел примеров и **`summary`** на пример.
 
-**Constructor:**
+**Конструктор:**
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 class ErrorDoc:
     def __init__(
         self,
         status_code: int,
         message: str,
-        examples: Optional[Dict[str, str | dict]] = None,
+        examples: Optional[Dict[str, Union[str, Dict[str, Any]]]] = None,
         body: Optional[Dict[str, Any]] = None,
         example_key: Optional[str] = None,
         model: Any = None,
@@ -576,7 +598,7 @@ class ErrorDoc:
         ...
 ```
 
-When **`examples`** is omitted, a single example is built from **`body`** or `{"detail": message}`.
+Если **`examples`** не задан, один пример строится из **`body`** или `{"detail": message}`.
 
 ### `ErrorProfile`
 
@@ -586,21 +608,19 @@ Frozen-дефолты стандартных HTTP-флагов на уровне
 from typing import Optional
 
 class ErrorProfile:
-    def __init__(
-        self,
-        unauthorized_401: Optional[bool] = None,
-        forbidden_403: Optional[bool] = None,
-        validation_error_422: Optional[bool] = None,
-        internal_server_error_500: Optional[bool] = None,
-    ) -> None:
-        ...
+    unauthorized_401: bool = False
+    forbidden_403: bool = False
+    validation_error_422: Optional[bool] = None  # None = профиль не задаёт 422
+    internal_server_error_500: bool = False
 ```
+
+Только **`validation_error_422`** — `Optional[bool]`: `None` значит, что профиль не включает 422 (решают kwargs эндпоинта / `Errors`). Остальные три флага по умолчанию **`False`**.
 
 ### `BaseErrorDTO`
 
 Базовая реализация протокола ErrorDTO для удобства.
 
-**Constructor:**
+**Конструктор:**
 ```python
 from typing import Any, Dict, Optional
 
@@ -616,31 +636,35 @@ class BaseErrorDTO:
         ...
 ```
 
-**Example:**
+**Пример:**
 ```python
 error = BaseErrorDTO(status_code=404, message="Not found")
 ```
 
 ### `StandardErrorDTO`
 
-Расширенная реализация с несколькими примерами.
+Расширенная реализация с несколькими примерами. Наследует **`model`**, **`schema`** и **`openapi_json_extras`** от **`BaseErrorDTO`**.
 
-**Constructor:**
+**Конструктор:**
 ```python
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
-class StandardErrorDTO:
+class StandardErrorDTO(BaseErrorDTO):
     def __init__(
         self,
         status_code: int,
         message: str,
+        model: Any = None,
+        schema: Optional[Dict[str, Any]] = None,
         openapi_json_extras: Optional[Dict[str, Any]] = None,
-        examples: Optional[Dict[str, str]] = None,
+        examples: Optional[Dict[str, Union[str, Dict[str, Any]]]] = None,
     ) -> None:
         ...
 ```
 
-**Example:**
+Значения **`examples`** — сокращённая **`str`** (текст detail), **`dict`** OpenAPI Example Object (с **`summary`** / **`value`**) или произвольное **`dict`**-тело ответа (оборачивается в `{"value": body}`).
+
+**Пример:**
 ```python
 error = StandardErrorDTO(
     status_code=401,
@@ -654,15 +678,15 @@ error = StandardErrorDTO(
 
 ## Миграция с 0.9
 
-Обновляетесь с **0.9.x**? См. **[CHANGELOG.md](CHANGELOG.md)** § 1.0.0 и полный гайд **[migration-0.9-to-1.0.md](localdocs/notes/migration-0.9-to-1.0.md)**.
+Обновляетесь с **0.9.x**? См. **[CHANGELOG.md](CHANGELOG.md)** § 1.0.0 и полный гайд **[docs/migration-0.9-to-1.0.md](docs/migration-0.9-to-1.0.md)**.
 
 ### Breaking changes (кратко)
 
 | Area | 0.9.x | 1.0 |
 |------|-------|-----|
+| DTO with only `to_example()` | Works + warning | **`TypeError`** при регистрации роутов — use `to_examples()` |
 | `unauthorized`, `forbidden`, `validation_error`, `internal_server_error` | Deprecated, accepted | **`TypeError`** — use `*_401` / `*_403` / `*_422` / `*_500` |
 | `Errors()` without 422 kwargs | Implicit 422 + warning | **No 422** |
-| DTO with only `to_example()` | Works + warning | **`TypeError`** — use `to_examples()` |
 | `LegacyErrorDTO`, `ErrorDTOLike` | Exported | **Removed** |
 
 ### Legacy kwargs (удалены)
@@ -686,9 +710,9 @@ Errors(validation_error_422=True)
 # or ErrorProfile(validation_error_422=True)
 ```
 
-### `to_example()` (удалён)
+### `to_example()` (удалён) — мигрируйте первым
 
-Переименуйте методы DTO в **`to_examples()`**. У bundled DTO больше нет `to_example()`.
+Переименуйте методы DTO в **`to_examples()`** до legacy kwargs. У bundled DTO больше нет `to_example()`. Аудит: `rg 'def to_example\b' --glob '*.py'`.
 
 ### Команды аудита
 
@@ -713,12 +737,12 @@ rg 'def to_example\b' --glob '*.py'
 - Анализировать код для поиска ошибок
 - Гарантировать полноту списков ошибок
 
-## Частые ловушки (Common Pitfalls)
+## Частые ловушки
 
 - **Расхождение runtime и документации**: исключение может бросаться в рантайме, но отсутствовать в `responses=Errors(...)` — OpenAPI это само не обнаружит.
 - **Исключения из `Depends()`**: auth/permission зависимости могут кидать 401/403, но без объявления в `Errors(...)` спецификация неполна.
-- **Избыточная документация**: `Errors(...)` может описывать ответы, которые endpoint фактически не возвращает.
-- **Обновление до 1.0**: голый `Errors()` больше не документирует 422 — добавьте `validation_error_422=True` (или профиль), где в OpenAPI нужен validation error.
+- **Избыточная документация**: `Errors(...)` может описывать ответы, которые эндпоинт фактически не возвращает.
+- **Обновление до 1.0**: голый `Errors()` больше не документирует 422 библиотеки — добавьте `validation_error_422=True` (или профиль), где в OpenAPI нужен validation error. FastAPI может по-прежнему добавлять свой `422` / `HTTPValidationError` в схему для валидируемых параметров.
 
 ## Вклад в проект
 

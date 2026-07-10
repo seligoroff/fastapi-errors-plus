@@ -1,4 +1,4 @@
-"""Project-wide defaults for :class:`Errors` (release 0.9)."""
+"""Project-wide defaults for :class:`Errors`."""
 
 from dataclasses import dataclass
 from typing import Optional
